@@ -166,6 +166,10 @@ void WidgetText::render(const Common::String &str) {
 	// Allocate a surface for the window
 	_surface.create(_bounds.width(), _bounds.height());
 	_surface.clear(TRANSPARENCY);
+	// This widget is reused after freeMenu() removes it from the active list.
+	// Do not let the previous dialog's screen origin make the new text queue
+	// directly into the hires layer before the new box is drawn.
+	_surface.clearHiresTextOrigin();
 
 	// Form the background for the new window
 	makeInfoArea();
@@ -195,6 +199,7 @@ void WidgetMessage::load(const Common::String &str, int time) {
 	// Allocate a surface for the window
 	_surface.create(_bounds.width(), _bounds.height());
 	_surface.clear(TRANSPARENCY);
+	_surface.clearHiresTextOrigin();
 
 	// Form the background for the new window and write the line of text
 	makeInfoArea();

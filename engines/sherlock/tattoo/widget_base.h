@@ -113,6 +113,9 @@ public:
 	 */
 	virtual void erase();
 
+	/** Forget any hires text queued while this reusable widget was inactive. */
+	void clearHiresTextState() { _surface.clearHiresTextOrigin(); }
+
 	/**
 	 * Update the display of the widget on the screen
 	 */
