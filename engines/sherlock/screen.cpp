@@ -777,6 +777,13 @@ void Screen::queueRoseTattooHiresText(const Common::String &str, const Common::P
 	const uint32 color = _roseTattooHiresTextLayer.format.ARGBToColor(0xff,
 		(rgbColor >> 16) & 0xff, (rgbColor >> 8) & 0xff, rgbColor & 0xff);
 	font->drawString(&_roseTattooHiresTextLayer, str, x, y, outWidth - x, color);
+
+	Common::Rect textRect(x, y, x + font->getStringWidth(str), y + font->getFontHeight());
+	textRect.clip(Common::Rect(0, 0, outWidth, outHeight));
+	if (_roseTattooHiresTextLayerRect.isEmpty())
+		_roseTattooHiresTextLayerRect = textRect;
+	else
+		_roseTattooHiresTextLayerRect.extend(textRect);
 }
 
 int Screen::roseTattooHiresStringWidth(const Common::String &str, int fontHeightPx) {
@@ -863,10 +870,11 @@ void Screen::blendRoseTattooHiresTextLayer() {
 	}
 	_roseTattooHiresTextNativeRect = Common::Rect();
 
-	const int w = _roseTattooHiresTextLayer.w;
-	const int h = _roseTattooHiresTextLayer.h;
-	for (int y = 0; y < h; ++y) {
-		for (int x = 0; x < w; ++x) {
+	Common::Rect textRect = _roseTattooHiresTextLayerRect;
+	_roseTattooHiresTextLayerRect = Common::Rect();
+	textRect.clip(Common::Rect(0, 0, _roseTattooHiresTextLayer.w, _roseTattooHiresTextLayer.h));
+	for (int y = textRect.top; y < textRect.bottom; ++y) {
+		for (int x = textRect.left; x < textRect.right; ++x) {
 			uint8 a, r, g, b;
 			_roseTattooHiresTextLayer.format.colorToARGB(_roseTattooHiresTextLayer.getPixel(x, y), a, r, g, b);
 			if (a == 0)
@@ -904,6 +912,7 @@ void Screen::clearRoseTattooHiresTextLayer() {
 	// update() calls. Do not carry the old frame's background-repaint region
 	// into the next composite either.
 	_roseTattooHiresTextNativeRect = Common::Rect();
+	_roseTattooHiresTextLayerRect = Common::Rect();
 }
 #endif
 
