@@ -172,6 +172,7 @@ public:
 		uint overrideColor, int fontHeightPx) {
 		_pendingHiresText.push_back({str, pt, overrideColor, fontHeightPx});
 	}
+	void clearDeferredHiresText() { _pendingHiresText.clear(); }
 #endif
 
 private:

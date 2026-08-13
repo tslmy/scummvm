@@ -56,6 +56,7 @@ void WidgetBase::banishWindow() {
 	TattooUserInterface &ui = *(TattooUserInterface *)_vm->_ui;
 
 	erase();
+	_surface.clearHiresTextOrigin();
 	_surface.free();
 	ui._widgets.remove(this);
 	ui._windowOpen = false;
@@ -118,6 +119,9 @@ void WidgetBase::draw() {
 		// Most dialogs render text into a widget-local surface before this
 		// method knows where the widget will land. Supplying the final
 		// screen-space origin replays those deferred TTF requests correctly.
+		screen.clearRoseTattooHiresTextRect(Common::Rect(
+			_bounds.left - screen._currentScroll.x, _bounds.top - screen._currentScroll.y,
+			_bounds.right - screen._currentScroll.x, _bounds.bottom - screen._currentScroll.y));
 		_surface.setHiresTextOrigin(Common::Point(_bounds.left - screen._currentScroll.x,
 			_bounds.top - screen._currentScroll.y));
 #endif
