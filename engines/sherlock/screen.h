@@ -404,6 +404,9 @@ public:
 			return false;
 		return getRoseTattooHiresFont(fontHeightPx * _roseTattooHiresScale) != nullptr;
 	}
+
+	/** Return the TTF width in native game pixels, or -1 when unavailable. */
+	int roseTattooHiresStringWidth(const Common::String &str, int fontHeightPx);
 #endif
 
 	bool loadRoseTattooHiresBackgroundOverride(int sceneNumber);

@@ -461,6 +461,13 @@ void TattooScene::doBgAnim() {
 
 	doBgAnimDrawSprites();
 
+#ifdef USE_FREETYPE2
+	// Tattoo redraws every active widget below. Rebuild the hires text layer
+	// from that authoritative frame state instead of retaining glyphs from a
+	// previous box size or a dialog that has already closed.
+	screen.clearRoseTattooHiresTextLayer();
+#endif
+
 	ui.drawInterface();
 
 	if (ui._creditsWidget.active())
