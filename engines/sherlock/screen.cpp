@@ -779,6 +779,21 @@ void Screen::queueRoseTattooHiresText(const Common::String &str, const Common::P
 	font->drawString(&_roseTattooHiresTextLayer, str, x, y, outWidth - x, color);
 }
 
+int Screen::roseTattooHiresStringWidth(const Common::String &str, int fontHeightPx) {
+	if (!canUseRoseTattooHiresText(fontHeightPx) || str.empty())
+		return -1;
+
+	Graphics::Font *font = getRoseTattooHiresFont(fontHeightPx * _roseTattooHiresScale);
+	if (!font)
+		return -1;
+
+	// Layout is expressed in the game's native pixels while the TTF is
+	// rendered at the output scale. Round up so the final glyph never falls
+	// outside the box due to integer division.
+	return (font->getStringWidth(str) + _roseTattooHiresScale - 1) /
+		_roseTattooHiresScale;
+}
+
 
 void Screen::registerRoseTattooHiresTextRect(const Common::Rect &nativeRect) {
 	if (_roseTattooHiresScale <= 1 || nativeRect.isEmpty())

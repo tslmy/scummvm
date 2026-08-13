@@ -439,6 +439,17 @@ int Fonts::stringWidth(const Common::String &str) {
 		width += charWidth(str.c_str(), idx);
 	}
 
+#ifdef USE_FREETYPE2
+	// The hires renderer is the visible renderer for Rose Tattoo dialog text,
+	// so use its metrics for wrapping and box sizing. The bitmap font remains
+	// the fallback for unsupported encodings and non-hires configurations.
+	if (_vm && _vm->_screen && !_isModifiedEucCn && !_isBig5) {
+		const int hiresWidth = _vm->_screen->roseTattooHiresStringWidth(str, _fontHeight);
+		if (hiresWidth >= 0)
+			return hiresWidth;
+	}
+#endif
+
 	return width;
 }
 
