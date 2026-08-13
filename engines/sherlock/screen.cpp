@@ -982,15 +982,18 @@ void Screen::update() {
 	} else if (_roseTattooHiresDebugMode == kRoseTattooHiresNative) {
 		_roseTattooHiresComposite.clear(maskOff);
 	} else {
-		for (int y = 0; y < outHeight; ++y) {
-			for (int x = 0; x < outWidth; ++x) {
-				uint32 color = 0;
-				const int bgX = bgOffsetX + x;
-				const int bgY = bgOffsetY + y;
-				if (bgX >= 0 && bgY >= 0 && bgX < _roseTattooHiresBackground.w && bgY < _roseTattooHiresBackground.h)
-					color = _roseTattooHiresBackground.getPixel(bgX, bgY);
-				_roseTattooHiresComposite.setPixel(x, y, color);
-			}
+		// Both surfaces use the same hires format. Clear the uncovered area
+		// once, then copy the visible portion of the scrolled background in a
+		// bulk blit instead of doing two nested getPixel/setPixel loops for
+		// every output pixel.
+		_roseTattooHiresComposite.clear(0);
+		Common::Rect source(bgOffsetX, bgOffsetY,
+			bgOffsetX + outWidth, bgOffsetY + outHeight);
+		source.clip(_roseTattooHiresBackground.getBounds());
+		if (!source.isEmpty()) {
+			Common::Rect destination = source;
+			destination.translate(-bgOffsetX, -bgOffsetY);
+			_roseTattooHiresComposite.blitFrom(_roseTattooHiresBackground, source, destination);
 		}
 	}
 
