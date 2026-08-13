@@ -76,11 +76,13 @@ static bool resolveRoseTattooHiresSpriteOverride(ImageFile *images, ImageFrame *
  */
 static void queueRoseTattooHiresObjectOverride(Screen &screen, Object &obj) {
 	Common::String resourceName;
-	int frameIndex;
-	if (resolveRoseTattooHiresSpriteOverride(obj._images, obj._imageFrame, resourceName, frameIndex)) {
-		screen.queueRoseTattooHiresSceneSprite(resourceName, frameIndex, *obj._imageFrame, obj._position,
-			(obj._flags & OBJ_FLIPPED) != 0, obj._scaleVal);
-	}
+	int frameIndex = -1;
+	resolveRoseTattooHiresSpriteOverride(obj._images, obj._imageFrame, resourceName, frameIndex);
+	// Queue every scene draw, even when no generated file exists. Screen then
+	// replays the native frame in this exact draw slot, instead of applying it
+	// later as a whole-screen foreground diff.
+	screen.queueRoseTattooHiresSceneSprite(resourceName, frameIndex, *obj._imageFrame, obj._position,
+		(obj._flags & OBJ_FLIPPED) != 0, obj._scaleVal);
 }
 
 /**
@@ -95,11 +97,10 @@ static void queueRoseTattooHiresObjectOverride(Screen &screen, Object &obj) {
 static void queueRoseTattooHiresPersonOverride(Screen &screen, TattooPerson &p,
 		const Common::Point &pt, bool horizFlip, int scaleVal) {
 	Common::String resourceName;
-	int frameIndex;
-	if (resolveRoseTattooHiresSpriteOverride(p._images, p._imageFrame, resourceName, frameIndex) ||
-			resolveRoseTattooHiresSpriteOverride(p._altImages, p._imageFrame, resourceName, frameIndex)) {
-		screen.queueRoseTattooHiresSceneSprite(resourceName, frameIndex, *p._imageFrame, pt, horizFlip, scaleVal);
-	}
+	int frameIndex = -1;
+	resolveRoseTattooHiresSpriteOverride(p._images, p._imageFrame, resourceName, frameIndex) ||
+		resolveRoseTattooHiresSpriteOverride(p._altImages, p._imageFrame, resourceName, frameIndex);
+	screen.queueRoseTattooHiresSceneSprite(resourceName, frameIndex, *p._imageFrame, pt, horizFlip, scaleVal);
 }
 
 /*----------------------------------------------------------------*/
@@ -227,6 +228,9 @@ void TattooScene::drawAllShapes() {
 	if (_activeCAnim.active() && _activeCAnim._zPlacement == BEHIND)
 		screen._backBuffer1.SHtransBlitFrom(_activeCAnim._imageFrame, _activeCAnim._position,
 			(_activeCAnim._flags & 4) >> 1, _activeCAnim._scaleVal);
+	if (_activeCAnim.active() && _activeCAnim._zPlacement == BEHIND)
+		screen.queueRoseTattooHiresSceneSprite(Common::String(), -1, _activeCAnim._imageFrame,
+			_activeCAnim._position, (_activeCAnim._flags & 4) >> 1, _activeCAnim._scaleVal);
 
 	screen.resetDisplayBounds();
 
@@ -279,6 +283,8 @@ void TattooScene::drawAllShapes() {
 			// It's an active animation
 			screen._backBuffer1.SHtransBlitFrom(_activeCAnim._imageFrame, _activeCAnim._position,
 				(_activeCAnim._flags & 4) >> 1, _activeCAnim._scaleVal);
+			screen.queueRoseTattooHiresSceneSprite(Common::String(), -1, _activeCAnim._imageFrame,
+				_activeCAnim._position, (_activeCAnim._flags & 4) >> 1, _activeCAnim._scaleVal);
 		} else {
 			// Drawing person
 			TattooPerson &p = *se._person;
@@ -347,6 +353,9 @@ void TattooScene::drawAllShapes() {
 	// Draw the canimation if it is set as FORWARD
 	if (_activeCAnim.active() && _activeCAnim._zPlacement == FORWARD)
 		screen._backBuffer1.SHtransBlitFrom(_activeCAnim._imageFrame, _activeCAnim._position, (_activeCAnim._flags & 4) >> 1, _activeCAnim._scaleVal);
+	if (_activeCAnim.active() && _activeCAnim._zPlacement == FORWARD)
+		screen.queueRoseTattooHiresSceneSprite(Common::String(), -1, _activeCAnim._imageFrame,
+			_activeCAnim._position, (_activeCAnim._flags & 4) >> 1, _activeCAnim._scaleVal);
 
 	// Draw all NO_SHAPE shapes which have their flag bits clear
 	for (uint idx = 0; idx < _bgShapes.size(); ++idx) {

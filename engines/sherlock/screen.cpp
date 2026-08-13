@@ -377,11 +377,26 @@ Common::Rect Screen::blitRoseTattooHiresSpriteOverride(Graphics::ManagedSurface 
 	if (_roseTattooHiresScale <= 1 || _roseTattooHiresFormat.isCLUT8())
 		return Common::Rect();
 
-	Graphics::Surface overrideSurface;
-	if (!loadRoseTattooHiresCursorOverride(resourceName, frameIndex, overrideSurface))
-		return Common::Rect();
-
 	const int scale = _roseTattooHiresScale;
+	Graphics::Surface overrideSurface;
+	const bool hasOverride = !resourceName.empty() && frameIndex >= 0 &&
+		loadRoseTattooHiresCursorOverride(resourceName, frameIndex, overrideSurface);
+	if (!hasOverride) {
+		// Every recorded scene draw must have a replacement in the ordered
+		// scene pass. Missing generated art therefore falls back to the exact
+		// native frame, expanded to the hires grid, rather than falling back
+		// to the late whole-screen diff (which would put it above later draws).
+		overrideSurface.create(nativeFrame._frame.w * scale, nativeFrame._frame.h * scale,
+			Graphics::PixelFormat::createFormatRGBA32());
+		for (int sy = 0; sy < overrideSurface.h; ++sy) {
+			for (int sx = 0; sx < overrideSurface.w; ++sx) {
+				const byte index = nativeFrame._frame.getPixel(sx / scale, sy / scale);
+				const byte alpha = index == TRANSPARENCY ? 0 : 255;
+				overrideSurface.setPixel(sx, sy, overrideSurface.format.ARGBToColor(alpha,
+					_cMap[index * 3], _cMap[index * 3 + 1], _cMap[index * 3 + 2]));
+			}
+		}
+	}
 
 	// Mirrors BaseSurface::SHtransBlitFrom(const ImageFrame &, ...): the
 	// frame's own offset (which varies frame-to-frame for walk-cycle
@@ -465,35 +480,35 @@ Common::Rect Screen::blitRoseTattooHiresSpriteOverride(Graphics::ManagedSurface 
 			if (dx < 0 || dx >= layer.w)
 				continue;
 
+			// Record provenance only where the native frame itself is opaque.
+			// The replacement may have a different silhouette, but clearing the
+			// entire rectangle would erase or clip neighbouring actors whose
+			// pixels happen to fall inside this frame's bounding box.
+			if (trackNativeProvenance) {
+				const int nx = dx / scale;
+				const int ny = dy / scale;
+				if (nx >= 0 && nx < SHERLOCK_SCREEN_WIDTH && ny >= 0 && ny < SHERLOCK_SCREEN_HEIGHT &&
+						nx < _backBuffer1.w && ny < _backBuffer1.h) {
+					const int nativeX = MIN(sx * nativeFrame._frame.w / MAX((int)scaledSurface->w, 1), nativeFrame._frame.w - 1);
+					const int nativeY = MIN(sy * nativeFrame._frame.h / MAX((int)scaledSurface->h, 1), nativeFrame._frame.h - 1);
+					const bool nativeOpaque = nativeFrame._frame.getPixel(nativeX, nativeY) != 0;
+					if (nativeOpaque) {
+						const int idx = ny * SHERLOCK_SCREEN_WIDTH + nx;
+						// Remember the final native value at this point in the scene
+						// draw order. A later scene draw updates it; later UI does not.
+						_roseTattooHiresSceneSpriteExpectedNative[idx] =
+							(byte)_backBuffer1.getPixel(nx, ny);
+						_roseTattooHiresSceneSpriteExpectedValid[idx] = 1;
+					}
+				}
+			}
+
 			uint8 a, r, g, b;
 			scaledSurface->format.colorToARGB(scaledSurface->getPixel(sx, sy), a, r, g, b);
 			if (a == 0)
 				continue;
 
 			layer.setPixel(dx, dy, layer.format.ARGBToColor(a, r, g, b));
-
-			if (trackNativeProvenance) {
-				// Record what _backBuffer1 (the native low-res scene
-				// buffer this shape/character was just SHtransBlitFrom()'d
-				// into, by the caller, immediately before this queue call)
-				// holds at this pixel's native equivalent right now - i.e.
-				// what this exact shape drew there. If a later shape in
-				// this same frame draws over the same native spot
-				// afterward (correctly occluding this one), its own
-				// queueRoseTattooHiresSceneSprite() call will overwrite
-				// this entry with its own value - see
-				// blendRoseTattooHiresSceneSpriteLayer() for how this gets
-				// used to detect and skip pixels that were subsequently
-				// occluded.
-				const int nx = dx / scale;
-				const int ny = dy / scale;
-				if (nx >= 0 && nx < SHERLOCK_SCREEN_WIDTH && ny >= 0 && ny < SHERLOCK_SCREEN_HEIGHT &&
-						nx < _backBuffer1.w && ny < _backBuffer1.h) {
-					const int idx = ny * SHERLOCK_SCREEN_WIDTH + nx;
-					_roseTattooHiresSceneSpriteExpectedNative[idx] = (byte)_backBuffer1.getPixel(nx, ny);
-					_roseTattooHiresSceneSpriteExpectedValid[idx] = 1;
-				}
-			}
 		}
 	}
 
@@ -519,6 +534,9 @@ void Screen::queueRoseTattooHiresSprite(const Common::String &resourceName, int 
 
 void Screen::queueRoseTattooHiresSceneSprite(const Common::String &resourceName, int frameIndex,
 		const ImageFrame &nativeFrame, const Common::Point &pt, bool horizFlip, int scaleVal) {
+	// This call is made next to every native scene draw, in draw order. The
+	// layer is composited before the remaining native UI diff, so tooltip and
+	// menu pixels retain their normal priority.
 	Common::Rect queuedRect = blitRoseTattooHiresSpriteOverride(_roseTattooHiresSceneSpriteLayer,
 		resourceName, frameIndex, nativeFrame, pt, horizFlip, scaleVal, true);
 	if (!queuedRect.isEmpty()) {
@@ -539,7 +557,6 @@ void Screen::blendRoseTattooHiresSceneSpriteLayer() {
 	spriteRect.clip(_roseTattooHiresSceneSpriteLayer.getBounds());
 	const int scale = _roseTattooHiresScale;
 	const bool haveProvenance = !_roseTattooHiresSceneSpriteExpectedValid.empty();
-	const byte *screenPixels = (const byte *)getPixels();
 	for (int y = spriteRect.top; y < spriteRect.bottom; ++y) {
 		for (int x = spriteRect.left; x < spriteRect.right; ++x) {
 			uint8 a, r, g, b;
@@ -549,23 +566,11 @@ void Screen::blendRoseTattooHiresSceneSpriteLayer() {
 				continue;
 
 			if (haveProvenance && scale > 0) {
-				// Skip this pixel if something else drew over its native
-				// equivalent *after* the shape/character that queued it
-				// did (see _roseTattooHiresSceneSpriteExpectedNative's
-				// declaration) - e.g. a bg-shape with no AI override,
-				// the verb menu, or any other native-only UI drawn later
-				// this same frame. Left unguarded, this AI-upscaled pixel
-				// would otherwise always render on top regardless, making
-				// characters/objects appear to "float" above whatever
-				// should be occluding them.
 				const int nx = x / scale;
 				const int ny = y / scale;
 				if (nx >= 0 && nx < SHERLOCK_SCREEN_WIDTH && ny >= 0 && ny < SHERLOCK_SCREEN_HEIGHT) {
 					const int idx = ny * SHERLOCK_SCREEN_WIDTH + nx;
 					if (!_roseTattooHiresSceneSpriteExpectedValid[idx])
-						continue;
-					const byte actualNative = screenPixels[ny * pitch + nx];
-					if (actualNative != _roseTattooHiresSceneSpriteExpectedNative[idx])
 						continue;
 				}
 			}
@@ -964,9 +969,11 @@ void Screen::update() {
 		}
 
 #ifdef USE_FREETYPE2
-		blendRoseTattooHiresTextLayer();
-#endif
 		blendRoseTattooHiresSceneSpriteLayer();
+		blendRoseTattooHiresTextLayer();
+#else
+		blendRoseTattooHiresSceneSpriteLayer();
+#endif
 		blendRoseTattooHiresSpriteLayer();
 		g_system->copyRectToScreen((const byte *)_roseTattooHiresComposite.getPixels(),
 			_roseTattooHiresComposite.pitch, 0, 0, outWidth, outHeight);
@@ -1006,9 +1013,11 @@ void Screen::update() {
 
 	if (_roseTattooHiresDebugMode == kRoseTattooHiresBackground) {
 #ifdef USE_FREETYPE2
-		blendRoseTattooHiresTextLayer();
-#endif
 		blendRoseTattooHiresSceneSpriteLayer();
+		blendRoseTattooHiresTextLayer();
+#else
+		blendRoseTattooHiresSceneSpriteLayer();
+#endif
 		blendRoseTattooHiresSpriteLayer();
 		g_system->copyRectToScreen((const byte *)_roseTattooHiresComposite.getPixels(),
 			_roseTattooHiresComposite.pitch, 0, 0, outWidth, outHeight);
@@ -1016,6 +1025,10 @@ void Screen::update() {
 		_dirtyRects.clear();
 		return;
 	}
+
+	// The scene layer was queued in the engine's draw order. Replay it now,
+	// before the remaining native foreground pixels, so native UI stays on top.
+	blendRoseTattooHiresSceneSpriteLayer();
 
 	const byte *screenPixels = (const byte *)getPixels();
 	const byte *backgroundPixels = (const byte *)_backBuffer2.getPixels();
@@ -1032,6 +1045,16 @@ void Screen::update() {
 				continue;
 
 			const byte nativePixel = screenRow[x];
+			// Scene draws have already been replayed above. Suppress only the
+			// native pixels that still match the last recorded scene draw. A
+			// later tooltip/menu/widget changes the final native byte, and is
+			// therefore copied after the replay as intended.
+			if (!_roseTattooHiresSceneSpriteExpectedValid.empty()) {
+				const int provenanceIndex = y * SHERLOCK_SCREEN_WIDTH + x;
+				if (_roseTattooHiresSceneSpriteExpectedValid[provenanceIndex] &&
+						nativePixel == _roseTattooHiresSceneSpriteExpectedNative[provenanceIndex])
+					continue;
+			}
 			const bool overlayPixel = _roseTattooHiresDebugMode == kRoseTattooHiresNative || nativePixel != bgRow[bgNativeX];
 			if (!overlayPixel)
 				continue;
@@ -1050,7 +1073,6 @@ void Screen::update() {
 #ifdef USE_FREETYPE2
 	blendRoseTattooHiresTextLayer();
 #endif
-	blendRoseTattooHiresSceneSpriteLayer();
 	blendRoseTattooHiresSpriteLayer();
 	g_system->copyRectToScreen((const byte *)_roseTattooHiresComposite.getPixels(),
 		_roseTattooHiresComposite.pitch, 0, 0, outWidth, outHeight);
