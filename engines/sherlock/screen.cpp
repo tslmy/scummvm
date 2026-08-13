@@ -519,8 +519,14 @@ void Screen::queueRoseTattooHiresSprite(const Common::String &resourceName, int 
 
 void Screen::queueRoseTattooHiresSceneSprite(const Common::String &resourceName, int frameIndex,
 		const ImageFrame &nativeFrame, const Common::Point &pt, bool horizFlip, int scaleVal) {
-	blitRoseTattooHiresSpriteOverride(_roseTattooHiresSceneSpriteLayer,
+	Common::Rect queuedRect = blitRoseTattooHiresSpriteOverride(_roseTattooHiresSceneSpriteLayer,
 		resourceName, frameIndex, nativeFrame, pt, horizFlip, scaleVal, true);
+	if (!queuedRect.isEmpty()) {
+		if (_roseTattooHiresSceneSpriteNativeRect.isEmpty())
+			_roseTattooHiresSceneSpriteNativeRect = queuedRect;
+		else
+			_roseTattooHiresSceneSpriteNativeRect.extend(queuedRect);
+	}
 }
 
 void Screen::blendRoseTattooHiresSceneSpriteLayer() {
@@ -529,13 +535,13 @@ void Screen::blendRoseTattooHiresSceneSpriteLayer() {
 
 	// Same blend approach as blendRoseTattooHiresSpriteLayer() (see its
 	// comment for why no background-repaint-first step is needed/wanted).
-	const int w = _roseTattooHiresSceneSpriteLayer.w;
-	const int h = _roseTattooHiresSceneSpriteLayer.h;
+	Common::Rect spriteRect = _roseTattooHiresSceneSpriteNativeRect;
+	spriteRect.clip(_roseTattooHiresSceneSpriteLayer.getBounds());
 	const int scale = _roseTattooHiresScale;
 	const bool haveProvenance = !_roseTattooHiresSceneSpriteExpectedValid.empty();
 	const byte *screenPixels = (const byte *)getPixels();
-	for (int y = 0; y < h; ++y) {
-		for (int x = 0; x < w; ++x) {
+	for (int y = spriteRect.top; y < spriteRect.bottom; ++y) {
+		for (int x = spriteRect.left; x < spriteRect.right; ++x) {
 			uint8 a, r, g, b;
 			_roseTattooHiresSceneSpriteLayer.format.colorToARGB(
 				_roseTattooHiresSceneSpriteLayer.getPixel(x, y), a, r, g, b);
@@ -588,6 +594,7 @@ void Screen::clearRoseTattooHiresSceneSpriteLayer() {
 	// flag is set.
 	if (!_roseTattooHiresSceneSpriteExpectedValid.empty())
 		Common::fill(_roseTattooHiresSceneSpriteExpectedValid.begin(), _roseTattooHiresSceneSpriteExpectedValid.end(), 0);
+	_roseTattooHiresSceneSpriteNativeRect = Common::Rect();
 }
 
 void Screen::paintRoseTattooHiresWorldSprite(const Common::String &resourceName, int frameIndex,
@@ -659,10 +666,10 @@ void Screen::blendRoseTattooHiresSpriteLayer() {
 	// and let the background bleed through the widget. The native (blocky)
 	// icon blit already drawn by the caller as a fallback is a fine base to
 	// blend the crisp override on top of.
-	const int w = _roseTattooHiresSpriteLayer.w;
-	const int h = _roseTattooHiresSpriteLayer.h;
-	for (int y = 0; y < h; ++y) {
-		for (int x = 0; x < w; ++x) {
+	Common::Rect spriteRect = _roseTattooHiresSpriteNativeRect;
+	spriteRect.clip(_roseTattooHiresSpriteLayer.getBounds());
+	for (int y = spriteRect.top; y < spriteRect.bottom; ++y) {
+		for (int x = spriteRect.left; x < spriteRect.right; ++x) {
 			uint8 a, r, g, b;
 			_roseTattooHiresSpriteLayer.format.colorToARGB(_roseTattooHiresSpriteLayer.getPixel(x, y), a, r, g, b);
 			if (a == 0)

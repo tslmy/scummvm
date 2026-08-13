@@ -146,6 +146,9 @@ private:
 	 */
 	Common::Rect _roseTattooHiresSpriteNativeRect;
 
+	/** Occupied scaled bounds of the scene/object sprite override layer. */
+	Common::Rect _roseTattooHiresSceneSpriteNativeRect;
+
 	/**
 	 * True-color RGBA layer for AI-upscaled overrides of the live scene's
 	 * walking characters and bg-shape objects (see
