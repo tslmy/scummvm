@@ -912,6 +912,10 @@ void Screen::clearRoseTattooHiresTextLayer() {
 	if (!_roseTattooHiresTextLayer.empty())
 		_roseTattooHiresTextLayer.fillRect(Common::Rect(0, 0, _roseTattooHiresTextLayer.w,
 			_roseTattooHiresTextLayer.h), 0);
+	// Scene/map transitions can wipe the persistent text layer between
+	// update() calls. Do not carry the old frame's background-repaint region
+	// into the next composite either.
+	_roseTattooHiresTextNativeRect = Common::Rect();
 }
 #endif
 

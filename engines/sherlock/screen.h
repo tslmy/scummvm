@@ -213,7 +213,7 @@ private:
 	Common::Rect blitRoseTattooHiresSpriteOverride(Graphics::ManagedSurface &layer,
 		const Common::String &resourceName, int frameIndex, const ImageFrame &nativeFrame,
 		const Common::Point &pt, bool horizFlip, int scaleVal, bool trackNativeProvenance = false);
-protected: 
+protected:
 	SherlockEngine *_vm;
 	Surface _backBuffer;
 
