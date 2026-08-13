@@ -315,8 +315,9 @@ void WidgetTooltip::refreshHiresText() {
 	// repositioned) _bounds, rather than the mouse position used when
 	// setText() first ran, since the tooltip may have moved since then.
 	Common::Point origin(_bounds.left - _vm->_screen->_currentScroll.x,
-		_bounds.top - _vm->_screen->_currentScroll.y);
+	_bounds.top - _vm->_screen->_currentScroll.y);
 	_surface.setHiresTextOrigin(origin);
+	_surface.clearDeferredHiresText();
 
 	// Redraw the same text at the same local coordinates used in setText():
 	// this re-blits identical pixels onto the already-drawn bitmap surface

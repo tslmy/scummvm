@@ -58,7 +58,6 @@ void BaseSurface::setHiresTextOrigin(const Common::Point &pt) {
 		_vm->_screen->queueRoseTattooHiresText(it->_str, it->_pt + pt,
 			rgbColor, it->_fontHeightPx);
 	}
-	_pendingHiresText.clear();
 #endif
 }
 
