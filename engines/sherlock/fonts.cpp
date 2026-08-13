@@ -506,19 +506,38 @@ int Fonts::charWidth(const char *p, int &idx) {
 		return Graphics::Big5Font::kChineseTraditionalWidth;
 	}
 
+	const int startIdx = idx;
 	idx++;
 
 	if (!_font)
 		return 0;
 
 	if (curChar == ' ') {
-		return 5; // hardcoded space
+		#ifdef USE_FREETYPE2
+		if (_vm && _vm->_screen) {
+			const int hiresWidth = _vm->_screen->roseTattooHiresStringWidth(
+				Common::String(p + startIdx, idx - startIdx), _fontHeight);
+			if (hiresWidth >= 0)
+				return hiresWidth;
+		}
+		#endif
+		return 5; // hardcoded bitmap-font space
 	}
 
 	byte translatedChar = translateChar(curChar);
 
-	if (translatedChar < _charCount)
-		return (*_font)[translatedChar]._frame.w + 1;
+	if (translatedChar < _charCount) {
+		const int bitmapWidth = (*_font)[translatedChar]._frame.w + 1;
+		#ifdef USE_FREETYPE2
+		if (_vm && _vm->_screen) {
+			const int hiresWidth = _vm->_screen->roseTattooHiresStringWidth(
+				Common::String(p + startIdx, idx - startIdx), _fontHeight);
+			if (hiresWidth >= 0)
+				return hiresWidth;
+		}
+		#endif
+		return bitmapWidth;
+	}
 	return 0;
 }
 
