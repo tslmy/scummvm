@@ -393,6 +393,15 @@ public:
 		return _roseTattooHiresScale > 1 && !_roseTattooHiresFormat.isCLUT8();
 	}
 
+#ifdef USE_FREETYPE2
+	/** Return whether the configured hires TTF is available at this height. */
+	bool canUseRoseTattooHiresText(int fontHeightPx) {
+		if (!usesRoseTattooHiresText() || fontHeightPx <= 0)
+			return false;
+		return getRoseTattooHiresFont(fontHeightPx * _roseTattooHiresScale) != nullptr;
+	}
+#endif
+
 	bool loadRoseTattooHiresBackgroundOverride(int sceneNumber);
 
 	/**

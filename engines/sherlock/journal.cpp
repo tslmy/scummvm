@@ -70,6 +70,14 @@ bool Journal::drawJournal(int direction, int howFar) {
 	int width;
 	int leftX;
 
+#ifdef USE_FREETYPE2
+	// Journal pages are redrawn into the native fallback framebuffer, so
+	// discard the previous page's persistent hires glyphs before queuing the
+	// new page. Otherwise old lines remain visible after paging or searching.
+	if (IS_ROSE_TATTOO && screen.usesRoseTattooHiresText())
+		screen.clearRoseTattooHiresTextLayer();
+#endif
+
 	if (IS_SERRATED_SCALPEL) {
 		if (_vm->getLanguage() == Common::ZH_TWN) {
 			topLineY = 31;

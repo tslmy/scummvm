@@ -60,7 +60,7 @@ void WidgetTooltipBase::draw() {
 		// just never draw it in the first place when it won't be seen.
 		bool skipBitmapBlit = false;
 #ifdef USE_FREETYPE2
-		skipBitmapBlit = screen.usesRoseTattooHiresText();
+		skipBitmapBlit = screen.canUseRoseTattooHiresText(screen.fontHeight());
 #endif
 		if (!skipBitmapBlit) {
 			screen.SHtransBlitFrom(_surface, Common::Point(_bounds.left - screen._currentScroll.x,

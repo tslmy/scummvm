@@ -748,47 +748,19 @@ void Screen::queueRoseTattooHiresText(const Common::String &str, const Common::P
 	// True-color anti-aliased glyphs can't be represented well once
 	// quantized down to an 8-bit CLUT8 composite (the whole point is smooth
 	// alpha-blended edges) - only bother in the true-color hires modes,
-	// same restriction the cursor override already applies. Also skip
-	// entirely when no hires background is loaded (e.g. Watson's Journal,
-	// which replaces the whole screen with its own bitmap-drawn UI and
-	// deliberately clears the hires background - see TattooJournal::show()):
-	// blendRoseTattooHiresTextLayer() can only mask away the composite's
-	// blocky nearest-neighbor-upscaled bitmap glyphs by repainting from the
-	// smooth hires background first, so without one, the crisp TTF text
-	// would just be blended on top of - not instead of - the native bitmap
-	// glyphs, producing a doubled/ghosted look.
+	// same restriction the cursor override already applies. A hires
+	// background is optional: the Journal intentionally uses the native
+	// nearest-neighbor fallback, and its bitmap glyphs are suppressed by
+	// Fonts::writeString() when this TTF is available.
 	//
-	// This isn't just a matter of loading *some* backdrop for the journal
-	// to repaint from, either: unlike WidgetTooltipBase (the only other
-	// hires-text caller), which skips its native bitmap blit entirely and
-	// re-queues its TTF text fresh every single frame it stays visible (see
-	// WidgetTooltipBase::draw()'s comment on why - the erase-then-redraw
-	// dance alone can't reliably win the race every frame), Watson's
-	// Journal draws its bitmap text into _backBuffer1 the normal way
-	// (Fonts::writeString(), same as any other text) and only once per
-	// page, not every frame. Since the "no hires background" composite
-	// path rebuilds itself from a fresh raw upscale of the *current* native
-	// framebuffer every single frame (blocky glyphs and all), and this
-	// method's own erase-mask rect is only registered on the frame the
-	// text is actually drawn (see registerRoseTattooHiresTextRect()), any
-	// subsequent frame the journal just sits idle would repaint the blocky
-	// glyphs back into the composite with no accompanying erase - and then
-	// blend the still-persisted crisp TTF layer on top of them anyway,
-	// reproducing the doubled/ghosted look. Properly supporting the
-	// journal would need the same per-frame re-draw/skip-native-blit
-	// treatment as WidgetTooltipBase, which is out of scope here - tracked
-	// as a known follow-up rather than attempted as a quick fix.
 	if (_roseTattooHiresScale <= 1 || _roseTattooHiresFormat.isCLUT8() || str.empty() ||
-			_roseTattooHiresBackground.empty())
+			fontHeightPx <= 0)
 		return;
 
-	// Slightly undersize the requested TTF point size relative to the
-	// bitmap font's total glyph-cell height: bitmap _fontHeight includes
-	// descender padding baked into the sprite frames, while TTF sizing
-	// measures cap-height, so an equal pixel size renders visibly larger/
-	// heavier than the original font. This factor was tuned by eye against
-	// the FONT4.VGS dialogue font.
-	const int pixelHeight = MAX(1, (fontHeightPx * _roseTattooHiresScale * 82) / 100);
+	// Match the bitmap font's cell height exactly. kTTFSizeModeCharacter
+	// interprets this as the requested character height; the previous 82%
+	// heuristic made every hires glyph visibly smaller than the original.
+	const int pixelHeight = MAX(1, fontHeightPx * _roseTattooHiresScale);
 
 	Graphics::Font *font = getRoseTattooHiresFont(pixelHeight);
 	if (!font)
