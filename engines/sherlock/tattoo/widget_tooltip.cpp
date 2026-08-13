@@ -115,6 +115,11 @@ void WidgetTooltipBase::draw() {
 		// already does for the native bitmap blit.
 		Common::Rect nativeBounds = _bounds;
 		nativeBounds.translate(-screen._currentScroll.x, -screen._currentScroll.y);
+		// writeFancyString() deliberately emits offset shadow passes, and the
+		// TTF glyph metrics can extend slightly beyond the nominal surface edge.
+		// Include that margin so a fast tooltip move cannot leave a one-pixel
+		// bottom shadow in the persistent hires layer.
+		nativeBounds.grow(3);
 
 		if (!skipBitmapBlit)
 			screen.registerRoseTattooHiresTextRect(nativeBounds);
@@ -161,6 +166,7 @@ void WidgetTooltipBase::erase() {
 		// old tooltip's glyphs are left behind as a permanent ghost.
 		Common::Rect nativeOldBounds = _oldBounds;
 		nativeOldBounds.translate(-screen._currentScroll.x, -screen._currentScroll.y);
+		nativeOldBounds.grow(3);
 		screen.clearRoseTattooHiresTextRect(nativeOldBounds);
 #endif
 
