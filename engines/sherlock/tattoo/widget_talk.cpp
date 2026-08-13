@@ -101,16 +101,14 @@ void WidgetTalk::load() {
 
 	_bounds.moveTo(pt);
 
-	// Tell Fonts::writeString() where this widget-local surface will end
-	// up on the live screen (see WidgetBase::draw(), which subtracts the
-	// same scroll offset when blitting), so hires text queued while
-	// writing into it below lands in the right spot.
-	_surface.setHiresTextOrigin(Common::Point(pt.x - _vm->_screen->_currentScroll.x,
-		pt.y - _vm->_screen->_currentScroll.y));
-
 	// Set up the surface
 	_surface.create(_bounds.width(), _bounds.height());
 	_surface.clear(TRANSPARENCY);
+
+	// Keep hires text deferred until WidgetBase::draw() establishes the
+	// widget's live-screen origin. The UI erases widgets before redrawing
+	// them, so this lets draw() replay the text after each erase.
+	_surface.clearHiresTextOrigin();
 
 	// Form the background for the new window
 	makeInfoArea();
@@ -399,6 +397,11 @@ void WidgetTalk::render(Highlight highlightMode) {
 	TattooTalk &talk = *(TattooTalk *)_vm->_talk;
 
 	if (highlightMode != HL_SCROLLBAR_ONLY) {
+		// Rebuild the persistent hires-text requests whenever the dialog
+		// contents are redrawn, avoiding stale text after scrolling or a
+		// highlight change.
+		_surface.clearHiresTextOrigin();
+
 		int yp = 5;
 		int statementNum = 1;
 
