@@ -272,7 +272,8 @@ void Fonts::writeString(BaseSurface *surface, const Common::String &str,
 	// TTF is available; the hires layer supplies the replacement. This also
 	// allows the Journal, which has no smooth background override, to use
 	// crisp text without a bitmap layer underneath it.
-	if (_vm && _vm->_screen && !_isModifiedEucCn && !_isBig5 &&
+	if (_vm && _vm->_screen && _vm->_screen->roseTattooHiresJournalMode() &&
+			!_isModifiedEucCn && !_isBig5 &&
 			surface->w == _vm->_screen->w && surface->h == _vm->_screen->h)
 		replaceBitmapText = _vm->_screen->canUseRoseTattooHiresText(_fontHeight);
 #endif

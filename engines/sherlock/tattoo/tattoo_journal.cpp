@@ -83,6 +83,7 @@ void TattooJournal::show() {
 	// them, and let whatever reopens afterwards re-queue its own content.
 	const int hiresScale = screen.roseTattooHiresScale();
 	if (hiresScale > 1) {
+		screen.setRoseTattooHiresJournalMode(true);
 		screen.clearRoseTattooHiresBackground();
 #ifdef USE_FREETYPE2
 		screen.clearRoseTattooHiresTextLayer();
@@ -168,6 +169,7 @@ void TattooJournal::show() {
 	keymapper->getKeymap("tattoo-journal")->setEnabled(false);
 	keymapper->getKeymap("tattoo-exit")->setEnabled(false);
 	keymapper->getKeymap("tattoo")->setEnabled(true);
+	screen.setRoseTattooHiresJournalMode(false);
 
 	// Clear events
 	events.clearEvents();

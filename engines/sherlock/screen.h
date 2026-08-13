@@ -78,6 +78,7 @@ private:
 	int _fadeBytesRead, _fadeBytesToRead;
 	int _oldFadePercent;
 	int _roseTattooHiresScale;
+	bool _roseTattooHiresJournalMode;
 	int _roseTattooHiresDebugMode;
 	Graphics::PixelFormat _roseTattooHiresFormat;
 	byte _roseTattooPalette[Graphics::PALETTE_SIZE];
@@ -392,6 +393,9 @@ public:
 	bool usesRoseTattooHiresText() const {
 		return _roseTattooHiresScale > 1 && !_roseTattooHiresFormat.isCLUT8();
 	}
+
+	bool roseTattooHiresJournalMode() const { return _roseTattooHiresJournalMode; }
+	void setRoseTattooHiresJournalMode(bool enabled) { _roseTattooHiresJournalMode = enabled; }
 
 #ifdef USE_FREETYPE2
 	/** Return whether the configured hires TTF is available at this height. */
