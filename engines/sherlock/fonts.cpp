@@ -83,8 +83,11 @@ void Fonts::setVm(SherlockEngine *vm) {
 
 void Fonts::freeFont() {
 	delete _font;
-	delete _chineseFont;
+	_font = nullptr;
+	delete[] _chineseFont;
 	_chineseFont = nullptr;
+	delete _big5Font;
+	_big5Font = nullptr;
 }
 
 void Fonts::setFont(int fontNum) {
@@ -92,6 +95,7 @@ void Fonts::setFont(int fontNum) {
 
 	// Discard previous font
 	delete _font;
+	_font = nullptr;
 
 	if (IS_SERRATED_SCALPEL) {
 		// Scalpel
@@ -116,7 +120,7 @@ void Fonts::setFont(int fontNum) {
 		}
 	}
 
-	if (_isBig5 && _chineseFont == nullptr) {
+	if (_isBig5 && _big5Font == nullptr) {
 		Common::File pat;
 		if (!pat.open("TEXTPAT.FNT")) {
 			_isBig5 = false;
