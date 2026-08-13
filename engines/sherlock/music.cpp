@@ -424,6 +424,10 @@ bool Music::playMusic(const Common::String &name) {
 
 		Common::String midiMusicName = (IS_SERRATED_SCALPEL) ? name + ".MUS" : name + ".XMI";
 		Common::SeekableReadStream *stream = _vm->_res->load(Common::Path(midiMusicName), "MUSIC.LIB");
+		if (!stream) {
+			warning("Music: could not load '%s'", midiMusicName.c_str());
+			return false;
+		}
 
 		byte *midiMusicData     = new byte[stream->size()];
 		int32 midiMusicDataSize = stream->size();
