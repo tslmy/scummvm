@@ -871,7 +871,6 @@ void Screen::blendRoseTattooHiresTextLayer() {
 	_roseTattooHiresTextNativeRect = Common::Rect();
 
 	Common::Rect textRect = _roseTattooHiresTextLayerRect;
-	_roseTattooHiresTextLayerRect = Common::Rect();
 	textRect.clip(Common::Rect(0, 0, _roseTattooHiresTextLayer.w, _roseTattooHiresTextLayer.h));
 	for (int y = textRect.top; y < textRect.bottom; ++y) {
 		for (int x = textRect.left; x < textRect.right; ++x) {
