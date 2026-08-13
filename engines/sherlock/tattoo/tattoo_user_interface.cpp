@@ -957,6 +957,10 @@ void TattooUserInterface::banishWindow(bool slideUp) {
 void TattooUserInterface::freeMenu() {
 	for (Common::List<WidgetBase *>::iterator i = _widgets.begin(); i != _widgets.end(); ++i)
 		(*i)->erase();
+#ifdef USE_FREETYPE2
+	for (Common::List<WidgetBase *>::iterator i = _widgets.begin(); i != _widgets.end(); ++i)
+		(*i)->clearHiresTextState();
+#endif
 	_widgets.clear();
 }
 
