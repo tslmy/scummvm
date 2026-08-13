@@ -22,6 +22,7 @@
 #ifndef SHERLOCK_SURFACE_H
 #define SHERLOCK_SURFACE_H
 
+#include "common/array.h"
 #include "common/rect.h"
 #include "common/platform.h"
 #include "graphics/screen.h"
@@ -137,10 +138,7 @@ public:
 	 * nobody has updated yet safely opt out of hires text instead of
 	 * rendering it at a wrong position.
 	 */
-	void setHiresTextOrigin(const Common::Point &pt) {
-		_hiresTextOrigin = pt;
-		_hiresTextOriginKnown = true;
-	}
+	void setHiresTextOrigin(const Common::Point &pt);
 	bool getHiresTextOrigin(Common::Point &pt) const {
 		pt = _hiresTextOrigin;
 		return _hiresTextOriginKnown;
@@ -167,11 +165,25 @@ public:
 	 * whatever was previously drawn) be the sole place hires text for that
 	 * widget gets queued.
 	 */
-	void clearHiresTextOrigin() {
-		_hiresTextOriginKnown = false;
+	void clearHiresTextOrigin();
+
+#ifdef USE_FREETYPE2
+	void deferHiresText(const Common::String &str, const Common::Point &pt,
+		uint overrideColor, int fontHeightPx) {
+		_pendingHiresText.push_back({str, pt, overrideColor, fontHeightPx});
 	}
+#endif
 
 private:
+#ifdef USE_FREETYPE2
+	struct PendingHiresText {
+		Common::String _str;
+		Common::Point _pt;
+		uint _overrideColor;
+		int _fontHeightPx;
+	};
+	Common::Array<PendingHiresText> _pendingHiresText;
+#endif
 	Common::Point _hiresTextOrigin;
 	bool _hiresTextOriginKnown = false;
 };

@@ -364,8 +364,8 @@ void Fonts::writeString(BaseSurface *surface, const Common::String &str,
 	// told us its origin (via BaseSurface::setHiresTextOrigin()) for us to
 	// translate pt into a real screen coordinate. Surfaces matching the
 	// live screen's native dimensions are assumed to be full-screen
-	// mirrors, so pt is used as-is; anything else without a known origin
-	// is skipped rather than rendering hires text at the wrong spot.
+	// mirrors, so pt is used as-is. Dialog surfaces may not know their final
+	// origin yet; those requests are deferred until WidgetBase::draw().
 	Common::Point hiresOrigin;
 	bool haveOrigin = surface->getHiresTextOrigin(hiresOrigin);
 	bool isFullScreenMirror = _vm && _vm->_screen &&
@@ -387,6 +387,12 @@ void Fonts::writeString(BaseSurface *surface, const Common::String &str,
 				(uint32)cMap[overrideColor * 3 + 2];
 		}
 		_vm->_screen->queueRoseTattooHiresText(str, absPt, rgbColor, _fontHeight);
+	} else if (_vm && _vm->_screen && !_isModifiedEucCn && !_isBig5 &&
+			_vm->_screen->canUseRoseTattooHiresText(_fontHeight)) {
+		// Dialogs render into local surfaces before WidgetBase knows their
+		// final screen position. Replay these requests when the widget supplies
+		// its origin during draw().
+		surface->deferHiresText(str, pt, overrideColor, _fontHeight);
 	}
 #endif
 }
