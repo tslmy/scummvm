@@ -114,6 +114,14 @@ void WidgetBase::draw() {
 		// Get the area to draw, adjusted for scroll position
 		restrictToScreen();
 
+#ifdef USE_FREETYPE2
+		// Most dialogs render text into a widget-local surface before this
+		// method knows where the widget will land. Supplying the final
+		// screen-space origin replays those deferred TTF requests correctly.
+		_surface.setHiresTextOrigin(Common::Point(_bounds.left - screen._currentScroll.x,
+			_bounds.top - screen._currentScroll.y));
+#endif
+
 		// Draw the background for the widget
 		drawBackground();
 

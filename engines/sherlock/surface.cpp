@@ -38,6 +38,37 @@ BaseSurface::BaseSurface(int width_, int height_, const Graphics::PixelFormat &p
 		Graphics::Screen(width_, height_, pf), Fonts() {
 }
 
+void BaseSurface::setHiresTextOrigin(const Common::Point &pt) {
+	_hiresTextOrigin = pt;
+	_hiresTextOriginKnown = true;
+
+#ifdef USE_FREETYPE2
+	if (!_vm || !_vm->_screen || _pendingHiresText.empty())
+		return;
+
+	const byte *cMap = _vm->_screen->_cMap;
+	for (Common::Array<PendingHiresText>::const_iterator it = _pendingHiresText.begin();
+			it != _pendingHiresText.end(); ++it) {
+		uint32 rgbColor = 0;
+		if (it->_overrideColor) {
+			rgbColor = ((uint32)cMap[it->_overrideColor * 3] << 16) |
+				((uint32)cMap[it->_overrideColor * 3 + 1] << 8) |
+				cMap[it->_overrideColor * 3 + 2];
+		}
+		_vm->_screen->queueRoseTattooHiresText(it->_str, it->_pt + pt,
+			rgbColor, it->_fontHeightPx);
+	}
+	_pendingHiresText.clear();
+#endif
+}
+
+void BaseSurface::clearHiresTextOrigin() {
+	_hiresTextOriginKnown = false;
+#ifdef USE_FREETYPE2
+	_pendingHiresText.clear();
+#endif
+}
+
 void BaseSurface::writeString(const Common::String &str, const Common::Point &pt, uint overrideColor) {
 	Fonts::writeString(this, str, pt, overrideColor);
 }

@@ -170,6 +170,12 @@ void TattooJournal::show() {
 	keymapper->getKeymap("tattoo-exit")->setEnabled(false);
 	keymapper->getKeymap("tattoo")->setEnabled(true);
 	screen.setRoseTattooHiresJournalMode(false);
+#ifdef USE_FREETYPE2
+	// The Journal owns a persistent full-screen hires text layer. Clear it
+	// after leaving Journal mode so its page text and control labels cannot
+	// be blended over the restored room on the next frame.
+	screen.clearRoseTattooHiresTextLayer();
+#endif
 
 	// Clear events
 	events.clearEvents();
