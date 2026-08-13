@@ -119,6 +119,9 @@ private:
 	 */
 	Common::Rect _roseTattooHiresTextNativeRect;
 
+	/** Scaled bounds of glyph pixels queued for the current frame. */
+	Common::Rect _roseTattooHiresTextLayerRect;
+
 	/**
 	 * True-color RGBA layer for AI-upscaled sprite overrides (see
 	 * queueRoseTattooHiresSprite()) - e.g. inventory item icons - blended
