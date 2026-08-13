@@ -40,6 +40,39 @@ bool Fonts::_isBig5;
 byte *Fonts::_chineseFont;
 Graphics::Big5Font *Fonts::_big5Font;
 
+#ifdef USE_FREETYPE2
+// wordWrap() measures one byte at a time. Asking FreeType for a one-byte
+// string's width at every character makes long descriptions needlessly
+// expensive, so retain the 256 possible legacy-codepage advances for the
+// active Rose Tattoo TTF size.
+static int s_hiresCharWidthCache[256];
+static const Screen *s_hiresCharWidthCacheScreen = nullptr;
+static int s_hiresCharWidthCacheFontHeight = -1;
+static int s_hiresCharWidthCacheScale = -1;
+
+static int getCachedHiresCharWidth(SherlockEngine *vm, const char *p, int fontHeight) {
+	if (!vm || !vm->_screen)
+		return -1;
+
+	Screen *screen = vm->_screen;
+	if (s_hiresCharWidthCacheScreen != screen ||
+			s_hiresCharWidthCacheFontHeight != fontHeight ||
+			s_hiresCharWidthCacheScale != screen->roseTattooHiresScale()) {
+		for (int idx = 0; idx < 256; ++idx)
+			s_hiresCharWidthCache[idx] = -2;
+		s_hiresCharWidthCacheScreen = screen;
+		s_hiresCharWidthCacheFontHeight = fontHeight;
+		s_hiresCharWidthCacheScale = screen->roseTattooHiresScale();
+	}
+
+	const byte character = (byte)*p;
+	int &width = s_hiresCharWidthCache[character];
+	if (width == -2)
+		width = screen->roseTattooHiresStringWidth(Common::String(p, 1), fontHeight);
+	return width;
+}
+#endif
+
 void Fonts::setVm(SherlockEngine *vm) {
 	_vm = vm;
 	_font = nullptr;
@@ -512,15 +545,15 @@ int Fonts::charWidth(const char *p, int &idx) {
 	if (!_font)
 		return 0;
 
+	int hiresWidth = -1;
+#ifdef USE_FREETYPE2
+	if (_vm && !_isModifiedEucCn && !_isBig5)
+		hiresWidth = getCachedHiresCharWidth(_vm, p + startIdx, _fontHeight);
+#endif
+
 	if (curChar == ' ') {
-		#ifdef USE_FREETYPE2
-		if (_vm && _vm->_screen) {
-			const int hiresWidth = _vm->_screen->roseTattooHiresStringWidth(
-				Common::String(p + startIdx, idx - startIdx), _fontHeight);
-			if (hiresWidth >= 0)
-				return hiresWidth;
-		}
-		#endif
+		if (hiresWidth >= 0)
+			return hiresWidth;
 		return 5; // hardcoded bitmap-font space
 	}
 
@@ -528,14 +561,8 @@ int Fonts::charWidth(const char *p, int &idx) {
 
 	if (translatedChar < _charCount) {
 		const int bitmapWidth = (*_font)[translatedChar]._frame.w + 1;
-		#ifdef USE_FREETYPE2
-		if (_vm && _vm->_screen) {
-			const int hiresWidth = _vm->_screen->roseTattooHiresStringWidth(
-				Common::String(p + startIdx, idx - startIdx), _fontHeight);
-			if (hiresWidth >= 0)
-				return hiresWidth;
-		}
-		#endif
+		if (hiresWidth >= 0)
+			return hiresWidth;
 		return bitmapWidth;
 	}
 	return 0;
