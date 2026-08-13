@@ -265,6 +265,18 @@ void Fonts::writeString(BaseSurface *surface, const Common::String &str,
 	if (!_font)
 		return;
 
+	bool replaceBitmapText = false;
+#ifdef USE_FREETYPE2
+	// Full-screen mirror surfaces are copied directly to the native screen.
+	// In true-color hires mode, omit their blocky glyphs when the matching
+	// TTF is available; the hires layer supplies the replacement. This also
+	// allows the Journal, which has no smooth background override, to use
+	// crisp text without a bitmap layer underneath it.
+	if (_vm && _vm->_screen && !_isModifiedEucCn && !_isBig5 &&
+			surface->w == _vm->_screen->w && surface->h == _vm->_screen->h)
+		replaceBitmapText = _vm->_screen->canUseRoseTattooHiresText(_fontHeight);
+#endif
+
 	bool isInEucEscape = false;
 
 	for (const char *curCharPtr = str.c_str(); *curCharPtr; ++curCharPtr) {
@@ -318,10 +330,12 @@ void Fonts::writeString(BaseSurface *surface, const Common::String &str,
 
 		if (translCurChar < _charCount) {
 			ImageFrame &frame = (*_font)[translCurChar];
-			if (overrideColor) {
-				surface->SHoverrideBlitFrom(frame, Common::Point(charPos.x, charPos.y - _yOffsets[curChar]), overrideColor);
-			} else {
-				surface->SHtransBlitFrom(frame, Common::Point(charPos.x, charPos.y - _yOffsets[curChar]));
+			if (!replaceBitmapText) {
+				if (overrideColor) {
+					surface->SHoverrideBlitFrom(frame, Common::Point(charPos.x, charPos.y - _yOffsets[curChar]), overrideColor);
+				} else {
+					surface->SHtransBlitFrom(frame, Common::Point(charPos.x, charPos.y - _yOffsets[curChar]));
+				}
 			}
 			charPos.x += frame._frame.w + 1;
 		} else {
