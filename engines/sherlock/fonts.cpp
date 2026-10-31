@@ -55,6 +55,10 @@ static int getCachedHiresCharWidth(SherlockEngine *vm, const char *p, int fontHe
 		return -1;
 
 	Screen *screen = vm->_screen;
+	// A room-scoped native fallback can change text policy without changing
+	// the Screen, font height, or output scale used by the cache key.
+	if (!screen->usesRoseTattooHiresText())
+		return -1;
 	if (s_hiresCharWidthCacheScreen != screen ||
 			s_hiresCharWidthCacheFontHeight != fontHeight ||
 			s_hiresCharWidthCacheScale != screen->roseTattooHiresScale()) {

@@ -1,5 +1,43 @@
 # Rose Tattoo native-reference diagnostic
 
+## Optional scene-scoped safety fallback
+
+Set `SCUMMVM_SHERLOCK_TATTOO_HAZE_NATIVE_FALLBACK=1` before launch to use
+native rendering in rooms 7, 8, 18, 53 and 68. Other rooms and the overhead map
+continue using the configured renderer. This is a conservative playability
+option, **not** a hires haze implementation or modernized art for those rooms.
+It is disabled by default.
+
+In those rooms the original indexed framebuffer is presented with native bitmap
+text and without background, scene-sprite or widget-icon overrides. At hires
+scales it is enlarged nearest-neighbour using the installed palette; at scale 1
+the native-size `background.png` override is also bypassed. The journal stays
+native while opened from one of these rooms, and the map restores its own
+normal rendering before it starts. Cursor selection, visibility, hotspot and
+input processing are not switched: a configured hires cursor remains in use.
+As elsewhere, a true-color cursor does not necessarily follow palette fades.
+
+The policy is chosen before the destination room's UI and resources are drawn;
+retained hires layers are cleared when switching between native and enhanced
+policies, and pending masked-scene widgets are discarded at those boundaries.
+At hires scales, the whole-game `native-reference` debug mode below takes
+precedence when both options are enabled.
+
+Local validation used private game data and isolated save copies. Indexed
+boundary fixtures matched the whole-game reference in both mask modes for all
+five rooms and both conditional-flag states in rooms 8 and 18. Separate checks
+covered a room 8 walk with scrolling and room 18 in CLUT8/RGB565/RGBA32. A 1x
+fixture also checked that a native-size override is bypassed. Interaction
+checks covered a hotspot description and magnifier cursor, inventory across
+room changes, a journal round trip, a map location click, and return to an
+enhanced room. Synthetic sprite and baked markers checked that old layers did
+not survive a transition. TTF-present, TTF-absent and a no-FreeType build were
+exercised. These are targeted smoke tests, not exhaustive coverage of every
+story transition, platform, scaler, or scripted cutscene. Debug scene jumps do
+not simulate natural entrances.
+
+## Whole-game reference view
+
 This diagnostic is for comparing the hires compositor with native rendering;
 it does **not** implement hires haze or modernize the affected scenes. Set
 `SCUMMVM_SHERLOCK_TATTOO_HIRES_DEBUG=native-reference` together with a hires
@@ -63,6 +101,19 @@ python3 test/engines/sherlock/verify_mask_trace.py /path/to/private/new-trace.rt
 The synthetic verifier tests can be run with
 `python3 -m unittest discover -s test/engines/sherlock -p 'test_mask_trace_verifier.py'`;
 the CxxTest suite also exercises trace collection and serialization.
+For controlled runs using the same save copy and starting state, compare the
+first reference and fallback samples for every recorded scene/mode/flag state:
+
+```sh
+python3 test/engines/sherlock/compare_haze_fixtures.py \
+  /path/to/private/reference.rtmask /path/to/private/fallback.rtmask \
+  --require-scenes 18 --require-both-modes
+```
+
+This compares indexed mask-boundary state, not the later presented UI or cursor.
+Animation timing, scroll or story-state differences correctly make it fail;
+compare matching capture points rather than assuming two wall-clock screenshots
+represent the same game frame.
 
 The trace can also be used with `native-reference` or with hires disabled. Each
 sample contains the full world-sized indexed back buffer immediately before and

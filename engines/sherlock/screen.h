@@ -28,6 +28,7 @@
 #include "common/path.h"
 #include "common/rect.h"
 #include "graphics/managed_surface.h"
+#include "sherlock/hires_haze_fallback.h"
 #include "sherlock/hires_palette.h"
 #include "sherlock/image_file.h"
 #include "sherlock/surface.h"
@@ -83,6 +84,7 @@ private:
 	int _roseTattooHiresSpriteFilter;
 	bool _roseTattooHiresJournalMode;
 	int _roseTattooHiresDebugMode;
+	RoseTattooHazeFallback _roseTattooHazeFallback;
 	Graphics::PixelFormat _roseTattooHiresFormat;
 	RoseTattooHiresPalette _roseTattooPalette;
 	Graphics::ManagedSurface _roseTattooHiresBackground;
@@ -378,6 +380,8 @@ public:
 
 	int roseTattooHiresScale() const { return _roseTattooHiresScale; }
 	bool roseTattooHiresNativeReference() const;
+	void selectRoseTattooHazeFallbackScene(int scene);
+	bool roseTattooHazeFallbackTouchesScene(int scene) const { return _roseTattooHazeFallback.touches(scene); }
 
 	/**
 	 * True when Screen::queueRoseTattooHiresText() will actually queue a

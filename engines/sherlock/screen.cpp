@@ -149,6 +149,8 @@ Screen::Screen(SherlockEngine *vm) : BaseSurface(
 	}
 	_roseTattooHiresJournalMode = false;
 	_roseTattooHiresDebugMode = vm->getGameID() == GType_RoseTattoo ? roseTattooHiresDebugModeFromEnv() : kRoseTattooHiresComposite;
+	const char *hazeFallback = vm->getGameID() == GType_RoseTattoo ? getenv("SCUMMVM_SHERLOCK_TATTOO_HAZE_NATIVE_FALLBACK") : nullptr;
+	_roseTattooHazeFallback = RoseTattooHazeFallback(hazeFallback && !strcmp(hazeFallback, "1"));
 	_roseTattooHiresFormat = vm->getGameID() == GType_RoseTattoo ? roseTattooHiresFormatFromEnv() : Graphics::PixelFormat::createFormatCLUT8();
 	_roseTattooHiresSpriteCacheBytes = _roseTattooHiresSpriteCacheClock = 0;
 #ifdef USE_FREETYPE2
@@ -180,7 +182,25 @@ Screen::~Screen() {
 }
 
 bool Screen::roseTattooHiresNativeReference() const {
-	return _roseTattooHiresScale > 1 && _roseTattooHiresDebugMode == kRoseTattooHiresNativeReference;
+	return _roseTattooHazeFallback.active() ||
+		(_roseTattooHiresScale > 1 && _roseTattooHiresDebugMode == kRoseTattooHiresNativeReference);
+}
+
+void Screen::selectRoseTattooHazeFallbackScene(int scene) {
+	const bool wasNative = roseTattooHiresNativeReference();
+	if (!_roseTattooHazeFallback.select(scene) || wasNative == roseTattooHiresNativeReference())
+		return;
+
+	// These layers persist independently of the indexed framebuffer. A room
+	// policy change must not replay retained UI or scene pixels from the room
+	// being left, or bring them back when enhanced rendering resumes.
+	clearRoseTattooHiresBackground();
+	clearRoseTattooHiresSceneSpriteLayer();
+	clearRoseTattooHiresBakedSprites();
+	clearRoseTattooHiresSpriteLayer();
+#ifdef USE_FREETYPE2
+	clearRoseTattooHiresTextLayer();
+#endif
 }
 
 void Screen::clearRoseTattooHiresBackground() {
@@ -331,7 +351,7 @@ bool Screen::loadRoseTattooHiresMapOverride() {
 
 bool Screen::loadRoseTattooHiresCursorOverride(const Common::String &resourceName, int frameIndex,
 		Graphics::Surface &outSurface) {
-	if (_roseTattooHiresScale <= 1 || roseTattooHiresNativeReference())
+	if (_roseTattooHiresScale <= 1 || _roseTattooHiresDebugMode == kRoseTattooHiresNativeReference)
 		return false;
 	// Never consume a legacy name-only override for the ambiguous PC images,
 	// including callers which do not obtain their key from an ImageFile.

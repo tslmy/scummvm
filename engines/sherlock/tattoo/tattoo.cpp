@@ -129,6 +129,11 @@ void TattooEngine::startScene() {
 	TattooUserInterface &ui = *(TattooUserInterface *)_ui;
 
 	if (_scene->_goToScene == OVERHEAD_MAP || _scene->_goToScene == OVERHEAD_MAP2) {
+		// The map draws outside Scene::loadScene(); leave room fallback before
+		// it constructs any text, cursors, or background layers.
+		if (_screen->roseTattooHazeFallbackTouchesScene(-1))
+			ui._postRenderWidgets.clear();
+		_screen->selectRoseTattooHazeFallbackScene(-1);
 		// Show the map
 		_scene->_currentScene = OVERHEAD_MAP;
 		_scene->_goToScene = _map->show();
@@ -136,6 +141,14 @@ void TattooEngine::startScene() {
 		_people->_savedPos = Common::Point(-1, -1);
 		_people->_savedPos._facing = -1;
 	}
+
+	// Select the policy before cursors, room resources, bitmap text or
+	// widget-local text surfaces can be created for the destination scene.
+	// Inventory tooltips queued for a previous masked scene must not be
+	// replayed into the next room after its widget has been closed.
+	if (_screen->roseTattooHazeFallbackTouchesScene(_scene->_goToScene))
+		ui._postRenderWidgets.clear();
+	_screen->selectRoseTattooHazeFallbackScene(_scene->_goToScene);
 
 	switch (_scene->_goToScene) {
 	case 7:

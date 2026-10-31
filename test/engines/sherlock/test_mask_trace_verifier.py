@@ -4,6 +4,7 @@ import sys
 import unittest
 
 import verify_mask_trace as trace
+import compare_haze_fixtures as fixtures
 
 
 def sample(mode=1, identity=False):
@@ -118,6 +119,34 @@ class MaskTraceVerifierTest(unittest.TestCase):
         struct.pack_into("<II", second, 0, 2, 1)
         with self.assertRaisesRegex(trace.TraceError, "epoch"):
             trace.verify_file(MemoryPath(file_bytes([first, second])))
+
+    def test_controlled_fixture_comparison_ignores_only_capture_ids(self):
+        first = sample(mode=0)
+        second = sample(mode=1)
+        struct.pack_into("<II", second, 0, 2, 2)
+
+        def file_bytes(records):
+            return trace.MAGIC + b"".join(struct.pack("<I", len(r)) + r for r in records)
+
+        class MemoryPath:
+            def __init__(self, data):
+                self.data = data
+
+            def read_bytes(self):
+                return self.data
+
+        candidate_first, candidate_second = bytearray(first), bytearray(second)
+        struct.pack_into("<II", candidate_first, 0, 8, 3)
+        struct.pack_into("<II", candidate_second, 0, 9, 3)
+        a = MemoryPath(file_bytes([first, second]))
+        b = MemoryPath(file_bytes([candidate_first, candidate_second]))
+        self.assertEqual(fixtures.compare(a, b, [53], True), 2)
+        self.assertRaises(trace.TraceError, fixtures.compare, a, b, [18], True)
+        # A palette byte is part of the controlled native boundary fixture.
+        candidate_first[trace.FIELDS.size + 256] ^= 1
+        b = MemoryPath(file_bytes([candidate_first, candidate_second]))
+        with self.assertRaisesRegex(trace.TraceError, "boundary differs"):
+            fixtures.compare(a, b, [53], True)
 
 
 if __name__ == "__main__":
