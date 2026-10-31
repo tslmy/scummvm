@@ -20,6 +20,10 @@
  */
 
 #define FORBIDDEN_SYMBOL_EXCEPTION_getenv
+#define FORBIDDEN_SYMBOL_EXCEPTION_printf
+#define FORBIDDEN_SYMBOL_EXCEPTION_stdout
+
+#include <cstdio>
 
 #include "sherlock/scene.h"
 #include "sherlock/sherlock.h"
@@ -1163,6 +1167,19 @@ bool Scene::loadScene(const Common::Path &filename) {
 
 	// Transition to the scene and setup entrance co-ordinates and animations
 	transitionToScene();
+
+	// Opt-in smoke-test protocol: transitionToScene() has drawn the requested
+	// scene and called screen.update(), and has returned from any entrance
+	// animation. Require a real loaded save, not the fresh-start debug hook.
+	// This only proves the initial frame was presented, not that the room is
+	// naturally reachable or that later gameplay works.
+	const char *smoke = getenv("SCUMMVM_SHERLOCK_TATTOO_SCENE_SMOKE");
+	const char *requested = getenv("SCUMMVM_SHERLOCK_TATTOO_POSTLOAD_SCENE");
+	if (IS_ROSE_TATTOO && flag && saves._justLoaded && smoke && !strcmp(smoke, "1") && requested &&
+			_goToScene == -1 && atoi(requested) == _currentScene) {
+		printf("SHERLOCK_SCENE_SMOKE_RENDERED %d\n", _currentScene);
+		fflush(stdout);
+	}
 
 	// Player has not yet walked in this scene
 	_walkedInScene = false;
