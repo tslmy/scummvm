@@ -26,8 +26,10 @@
 #include "graphics/cursorman.h"
 #include "sherlock/sherlock.h"
 #include "sherlock/events.h"
+#include "sherlock/rose_frame_pacing.h"
 #include "sherlock/surface.h"
 #include "sherlock/tattoo/tattoo.h"
+#include "sherlock/tattoo/tattoo_scene.h"
 
 namespace Sherlock {
 
@@ -295,6 +297,19 @@ void Events::pollEvents() {
 
 void Events::pollEventsAndWait() {
 	pollEvents();
+	if (IS_ROSE_TATTOO && !IS_3DO && roseTattooMapFramePacing(_vm->_screen->roseTattooHiresScale(),
+			_vm->_scene->_currentScene == Tattoo::OVERHEAD_MAP)) {
+		// Keep the map loop's full 10 ms sleep, but present a due frame inside
+		// it rather than always waiting for the next iteration. Room animation
+		// loops keep their original pacing.
+		const uint32 first = roseTattooPollWait(g_system->getMillis(), _priorFrameTime, _frameRate);
+		g_system->delayMillis(first);
+		if (first < 10) {
+			checkForNextFrameCounter();
+			g_system->delayMillis(10 - first);
+		}
+		return;
+	}
 	g_system->delayMillis(10);
 }
 
