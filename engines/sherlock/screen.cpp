@@ -129,6 +129,8 @@ Screen::Screen(SherlockEngine *vm) : BaseSurface(
 			vm->getGameID() == GType_RoseTattoo ? 480 : 200, Graphics::PixelFormat::createFormatCLUT8()) {
 	_transitionSeed = 1;
 	_roseTattooHiresScale = vm->getGameID() == GType_RoseTattoo ? roseTattooHiresScaleFromEnv() : 1;
+	const char *spriteFilter = getenv("SCUMMVM_SHERLOCK_TATTOO_SPRITE_FILTER");
+	_roseTattooHiresSpriteBilinear = vm->getGameID() == GType_RoseTattoo && spriteFilter && !strcmp(spriteFilter, "bilinear");
 	_roseTattooHiresJournalMode = false;
 	_roseTattooHiresDebugMode = vm->getGameID() == GType_RoseTattoo ? roseTattooHiresDebugModeFromEnv() : kRoseTattooHiresComposite;
 	_roseTattooHiresFormat = vm->getGameID() == GType_RoseTattoo ? roseTattooHiresFormatFromEnv() : Graphics::PixelFormat::createFormatCLUT8();
@@ -475,6 +477,17 @@ Common::Rect Screen::blitRoseTattooHiresSpriteOverride(Graphics::ManagedSurface 
 	const int x = drawPt.x * scale;
 	const int y = drawPt.y * scale;
 	const int width = nativeW * scale, height = nativeH * scale;
+	const bool filtered = hasOverride && _roseTattooHiresSpriteBilinear &&
+		(width != overrideSurface->w || height != overrideSurface->h);
+	const bool flipOverride = horizFlip && !opaqueNative;
+	const int filterStartX = MAX(0, -x);
+	const int filterEndX = MIN(width, layer.w - x);
+	Common::Array<HiresSpriteFilterAxis> filterX;
+	if (filtered && filterEndX > filterStartX) {
+		filterX.resize(filterEndX - filterStartX);
+		for (int sx = filterStartX; sx < filterEndX; ++sx)
+			filterX[sx - filterStartX] = hiresSpriteFilterAxis(sx, overrideSurface->w, width, flipOverride);
+	}
 	const uint provenanceSize = _backBuffer1.w * _backBuffer1.h;
 	if (trackNativeProvenance && _roseTattooHiresSceneSpriteExpectedValid.size() != provenanceSize) {
 		_roseTattooHiresSceneSpriteExpectedNative.resize(provenanceSize, 0);
@@ -487,6 +500,9 @@ Common::Rect Screen::blitRoseTattooHiresSpriteOverride(Graphics::ManagedSurface 
 		if (dy < 0 || dy >= layer.h)
 			continue;
 		const int nativeY = hiresNativeSample(sy / scale, srcH, nativeH, false);
+		HiresSpriteFilterAxis filterY = { 0, 0, 0 };
+		if (filtered)
+			filterY = hiresSpriteFilterAxis(sy, overrideSurface->h, height, false);
 		for (int sx = 0; sx < width; ++sx) {
 			const int dx = x + sx;
 			if (dx < 0 || dx >= layer.w)
@@ -494,12 +510,11 @@ Common::Rect Screen::blitRoseTattooHiresSpriteOverride(Graphics::ManagedSurface 
 
 			const int nativeX = hiresNativeSample(sx / scale, srcW, nativeW, horizFlip && !opaqueNative);
 			const byte index = nativeFrame._frame.getPixel(nativeX, nativeY);
-			uint32 pixel;
+			uint32 pixel, nearestPixel = 0;
 			if (hasOverride) {
-				int sourceX = sx * overrideSurface->w / width;
-				if (horizFlip && !opaqueNative)
-					sourceX = overrideSurface->w - 1 - sourceX;
-				pixel = overrideSurface->getPixel(sourceX, sy * overrideSurface->h / height);
+				const int sourceX = hiresSpriteNearestSample(sx, overrideSurface->w, width, flipOverride);
+				nearestPixel = overrideSurface->getPixel(sourceX, sy * overrideSurface->h / height);
+				pixel = filtered ? hiresSpriteBilinearSample(*overrideSurface, filterX[sx - filterStartX], filterY) : nearestPixel;
 			} else {
 				pixel = _roseTattooPalette.color(layer.format, index,
 					opaqueNative || index != TRANSPARENCY ? 255 : 0);
@@ -507,7 +522,12 @@ Common::Rect Screen::blitRoseTattooHiresSpriteOverride(Graphics::ManagedSurface 
 
 			uint8 a, r, g, b;
 			layer.format.colorToARGB(pixel, a, r, g, b);
-			if (trackNativeProvenance && (opaqueNative || index != TRANSPARENCY || a)) {
+			// Filtering is visual only: provenance must remain exactly the same
+			// as the original nearest-neighbor replay, including override alpha.
+			uint8 nearestAlpha = a;
+			if (filtered && trackNativeProvenance && !opaqueNative && index == TRANSPARENCY)
+				layer.format.colorToARGB(nearestPixel, nearestAlpha, r, g, b);
+			if (trackNativeProvenance && (opaqueNative || index != TRANSPARENCY || nearestAlpha)) {
 				const int nx = dx / scale, ny = dy / scale;
 				const int idx = ny * _backBuffer1.w + nx;
 				_roseTattooHiresSceneSpriteExpectedNative[idx] = (byte)_backBuffer1.getPixel(nx, ny);

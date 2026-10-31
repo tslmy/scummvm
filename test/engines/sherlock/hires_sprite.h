@@ -4,7 +4,217 @@
 #include "sherlock/hires_sprite.h"
 
 class SherlockHiresSpriteTestSuite : public CxxTest::TestSuite {
+private:
+	uint32 sample(const Graphics::Surface &source, int x, int y, int width, int height, bool flipped = false) {
+		return Sherlock::hiresSpriteBilinearSample(source,
+			Sherlock::hiresSpriteFilterAxis(x, source.w, width, flipped),
+			Sherlock::hiresSpriteFilterAxis(y, source.h, height, false));
+	}
+
+	void assertARGB(const Graphics::PixelFormat &format, uint32 pixel, byte expectedA, byte expectedR,
+			byte expectedG, byte expectedB) {
+		byte a, r, g, b;
+		format.colorToARGB(pixel, a, r, g, b);
+		TS_ASSERT_EQUALS(a, expectedA);
+		TS_ASSERT_EQUALS(r, expectedR);
+		TS_ASSERT_EQUALS(g, expectedG);
+		TS_ASSERT_EQUALS(b, expectedB);
+	}
+
 public:
+	void testBilinearOneToOneExactIncludingTransparentPixelsAndFlip() {
+		Graphics::Surface source;
+		const Graphics::PixelFormat fmt = Graphics::PixelFormat::createFormatRGBA32();
+		source.create(5, 3, fmt);
+		for (int y = 0; y < source.h; ++y) {
+			for (int x = 0; x < source.w; ++x) {
+				const byte alpha = (x + y) % 3 == 0 ? 0 : (x * 41 + y * 17);
+				source.setPixel(x, y, fmt.ARGBToColor(alpha, x * 40, y * 60, x + y));
+			}
+		}
+		for (int y = 0; y < source.h; ++y) {
+			for (int x = 0; x < source.w; ++x) {
+				TS_ASSERT_EQUALS(sample(source, x, y, source.w, source.h), source.getPixel(x, y));
+				TS_ASSERT_EQUALS(sample(source, x, y, source.w, source.h, true), source.getPixel(source.w - 1 - x, y));
+			}
+		}
+		source.free();
+	}
+
+	void testBilinearOpaqueGradientAndEdgeClamping() {
+		Graphics::Surface source;
+		const Graphics::PixelFormat fmt = Graphics::PixelFormat::createFormatRGBA32();
+		source.create(2, 2, fmt);
+		source.setPixel(0, 0, fmt.ARGBToColor(255, 0, 0, 0));
+		source.setPixel(1, 0, fmt.ARGBToColor(255, 255, 0, 0));
+		source.setPixel(0, 1, fmt.ARGBToColor(255, 0, 255, 0));
+		source.setPixel(1, 1, fmt.ARGBToColor(255, 255, 255, 0));
+		assertARGB(fmt, sample(source, 0, 0, 1, 1), 255, 128, 128, 0);
+		assertARGB(fmt, sample(source, 1, 0, 4, 4), 255, 64, 0, 0);
+		assertARGB(fmt, sample(source, 2, 3, 4, 4), 255, 191, 255, 0);
+		TS_ASSERT_EQUALS(sample(source, 0, 0, 4, 4), source.getPixel(0, 0));
+		TS_ASSERT_EQUALS(sample(source, 3, 3, 4, 4), source.getPixel(1, 1));
+		source.free();
+	}
+
+	void testBilinearPremultipliedAlphaAndTransparentColors() {
+		Graphics::Surface source;
+		const Graphics::PixelFormat fmt = Graphics::PixelFormat::createFormatRGBA32();
+		source.create(2, 1, fmt);
+		source.setPixel(0, 0, fmt.ARGBToColor(255, 255, 0, 0));
+		source.setPixel(1, 0, fmt.ARGBToColor(0, 0, 255, 255));
+		const uint32 midpoint = sample(source, 0, 0, 1, 1);
+		assertARGB(fmt, midpoint, 128, 255, 0, 0);
+		assertARGB(fmt, Sherlock::hiresSpriteSourceOver(fmt, midpoint, fmt.ARGBToColor(255, 0, 0, 0)),
+			255, 128, 0, 0);
+		assertARGB(fmt, Sherlock::hiresSpriteSourceOver(fmt, midpoint, fmt.ARGBToColor(255, 255, 255, 255)),
+			255, 255, 127, 127);
+
+		source.setPixel(0, 0, fmt.ARGBToColor(128, 255, 0, 0));
+		source.setPixel(1, 0, fmt.ARGBToColor(255, 0, 0, 255));
+		assertARGB(fmt, sample(source, 0, 0, 1, 1), 192, 85, 0, 170);
+		source.setPixel(0, 0, fmt.ARGBToColor(0, 255, 0, 0));
+		source.setPixel(1, 0, fmt.ARGBToColor(0, 0, 0, 255));
+		assertARGB(fmt, sample(source, 0, 0, 1, 1), 0, 0, 0, 0);
+		source.free();
+	}
+
+	void testBilinearSinglePixelAndMaximumWhite() {
+		Graphics::Surface source;
+		const Graphics::PixelFormat fmt = Graphics::PixelFormat::createFormatRGBA32();
+		const uint32 white = fmt.ARGBToColor(255, 255, 255, 255);
+		source.create(1, 1, fmt);
+		source.setPixel(0, 0, white);
+		for (int y = 0; y < 5; ++y)
+			for (int x = 0; x < 7; ++x)
+				TS_ASSERT_EQUALS(sample(source, x, y, 7, 5, true), white);
+		source.free();
+		source.create(2, 2, fmt);
+		for (int y = 0; y < 2; ++y)
+			for (int x = 0; x < 2; ++x)
+				source.setPixel(x, y, white);
+		// Exercises the largest possible accumulated alpha-weighted RGB.
+		TS_ASSERT_EQUALS(sample(source, 1, 1, 3, 3), white);
+		source.free();
+	}
+
+	void testBilinearFlipAndDimensions() {
+		Graphics::Surface source;
+		const Graphics::PixelFormat fmt = Graphics::PixelFormat::createFormatRGBA32();
+		source.create(7, 3, fmt);
+		for (int y = 0; y < source.h; ++y)
+			for (int x = 0; x < source.w; ++x)
+				source.setPixel(x, y, fmt.ARGBToColor((x * 37 + y * 29) % 256, x * 30, y * 70, x * y * 10));
+		for (int width = 1; width <= 12; ++width) {
+			for (int height = 1; height <= 8; ++height) {
+				for (int y = 0; y < height; ++y) {
+					for (int x = 0; x < width; ++x) {
+						const Sherlock::HiresSpriteFilterAxis fx = Sherlock::hiresSpriteFilterAxis(x, source.w, width, false);
+						const Sherlock::HiresSpriteFilterAxis fy = Sherlock::hiresSpriteFilterAxis(y, source.h, height, false);
+						TS_ASSERT(fx.first >= 0 && fx.second < source.w);
+						TS_ASSERT(fy.first >= 0 && fy.second < source.h);
+						TS_ASSERT_EQUALS(sample(source, x, y, width, height, true),
+							sample(source, width - 1 - x, y, width, height, false));
+					}
+				}
+			}
+		}
+		source.free();
+	}
+
+	void testBilinearMatchesIndependentFloatingPointReference() {
+		Graphics::Surface source;
+		const Graphics::PixelFormat fmt = Graphics::PixelFormat::createFormatRGBA32();
+		source.create(4, 3, fmt);
+		for (int y = 0; y < source.h; ++y)
+			for (int x = 0; x < source.w; ++x)
+				source.setPixel(x, y, fmt.ARGBToColor(64 + (x * 61 + y * 37) % 192,
+					(x * 91 + y * 39) % 256, (x * 47 + y * 89) % 256, (x * 31 + y * 101) % 256));
+		for (int width = 1; width <= 9; ++width) {
+			for (int height = 1; height <= 8; ++height) {
+				for (int flip = 0; flip < 2; ++flip) {
+					for (int y = 0; y < height; ++y) {
+						for (int x = 0; x < width; ++x) {
+							double u = ((flip ? width - 1 - x : x) + 0.5) * source.w / width - 0.5;
+							double v = (y + 0.5) * source.h / height - 0.5;
+							if (u < 0) u = 0;
+							if (v < 0) v = 0;
+							if (u > source.w - 1) u = source.w - 1;
+							if (v > source.h - 1) v = source.h - 1;
+							const int x0 = (int)u, y0 = (int)v;
+							const int x1 = x0 + 1 < source.w ? x0 + 1 : x0;
+							const int y1 = y0 + 1 < source.h ? y0 + 1 : y0;
+							const double weights[] = { (1 - (u - x0)) * (1 - (v - y0)), (u - x0) * (1 - (v - y0)),
+								(1 - (u - x0)) * (v - y0), (u - x0) * (v - y0) };
+							const uint32 pixels[] = { source.getPixel(x0, y0), source.getPixel(x1, y0),
+								source.getPixel(x0, y1), source.getPixel(x1, y1) };
+							double alpha = 0, red = 0, green = 0, blue = 0;
+							for (int i = 0; i < 4; ++i) {
+								byte a, r, g, b;
+								fmt.colorToARGB(pixels[i], a, r, g, b);
+								alpha += weights[i] * a;
+								red += weights[i] * a * r;
+								green += weights[i] * a * g;
+								blue += weights[i] * a * b;
+							}
+							byte a, r, g, b;
+							fmt.colorToARGB(sample(source, x, y, width, height, flip), a, r, g, b);
+							// The implementation uses 8-bit fractions; allow for that quantization.
+							TS_ASSERT_DELTA((double)a, alpha, 1.0);
+							TS_ASSERT_DELTA((double)r, red / alpha, 2.0);
+							TS_ASSERT_DELTA((double)g, green / alpha, 2.0);
+							TS_ASSERT_DELTA((double)b, blue / alpha, 2.0);
+						}
+					}
+				}
+			}
+		}
+		source.free();
+	}
+
+	void testBilinearClippingDoesNotChangeUnclippedGeometry() {
+		Graphics::Surface source;
+		const Graphics::PixelFormat fmt = Graphics::PixelFormat::createFormatRGBA32();
+		source.create(5, 4, fmt);
+		for (int y = 0; y < source.h; ++y)
+			for (int x = 0; x < source.w; ++x)
+				source.setPixel(x, y, fmt.ARGBToColor(31 * (x + y), x * 40, y * 50, 5));
+		const int width = 9, height = 7, viewportW = 6, viewportH = 5;
+		for (int flip = 0; flip < 2; ++flip) {
+			for (int left = -width; left <= viewportW; left += 3) {
+				for (int top = -height; top <= viewportH; top += 2) {
+					Graphics::ManagedSurface viewport(viewportW, viewportH, fmt);
+					viewport.clear(0);
+					for (int sy = 0; sy < height; ++sy) {
+						for (int sx = 0; sx < width; ++sx) {
+							const int dx = left + sx, dy = top + sy;
+							if (dx >= 0 && dx < viewportW && dy >= 0 && dy < viewportH)
+								viewport.setPixel(dx, dy, sample(source, sx, sy, width, height, flip));
+						}
+					}
+					for (int dy = 0; dy < viewportH; ++dy) {
+						for (int dx = 0; dx < viewportW; ++dx) {
+							const int sx = dx - left, sy = dy - top;
+							const uint32 expected = sx >= 0 && sx < width && sy >= 0 && sy < height ?
+								sample(source, sx, sy, width, height, flip) : 0;
+							TS_ASSERT_EQUALS(viewport.getPixel(dx, dy), expected);
+						}
+					}
+				}
+			}
+		}
+		source.free();
+	}
+
+	void testOverrideNearestMappingIsUnchanged() {
+		for (int source = 1; source <= 25; ++source)
+			for (int destination = 1; destination <= 20; ++destination)
+				for (int x = 0; x < destination; ++x) {
+					TS_ASSERT_EQUALS(Sherlock::hiresSpriteNearestSample(x, source, destination, false), x * source / destination);
+					TS_ASSERT_EQUALS(Sherlock::hiresSpriteNearestSample(x, source, destination, true), source - 1 - x * source / destination);
+				}
+	}
+
 	void testStraightAlphaOverlappingSprites() {
 		const Graphics::PixelFormat fmt = Graphics::PixelFormat::createFormatRGBA32();
 		const uint32 red = fmt.ARGBToColor(128, 255, 0, 0);

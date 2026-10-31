@@ -10,6 +10,7 @@
 #define SHERLOCK_HIRES_SPRITE_H
 
 #include "graphics/pixelformat.h"
+#include "graphics/surface.h"
 
 namespace Sherlock {
 
@@ -18,6 +19,65 @@ namespace Sherlock {
 inline int hiresNativeSample(int destination, int sourceSize, int destinationSize, bool flipped) {
 	const int sample = destination * (256 * sourceSize / destinationSize) / 256;
 	return flipped ? sourceSize - 1 - sample : sample;
+}
+
+// Override images use a different nearest-neighbor mapping from native frames.
+inline int hiresSpriteNearestSample(int destination, int sourceSize, int destinationSize, bool flipped) {
+	const int sample = destination * sourceSize / destinationSize;
+	return flipped ? sourceSize - 1 - sample : sample;
+}
+
+struct HiresSpriteFilterAxis {
+	int first, second;
+	uint fraction; // 0..255, in units of 1/256 of a source pixel
+};
+
+// Map destination pixel centers to source pixel centers, clamping at the
+// image edges. Reflect the destination coordinate for an exact mirror even
+// at non-integral scales. Inputs are in the *unclipped* draw rectangle.
+inline HiresSpriteFilterAxis hiresSpriteFilterAxis(int destination, int sourceSize, int destinationSize, bool flipped) {
+	if (flipped)
+		destination = destinationSize - 1 - destination;
+	const int64 position = ((2 * (int64)destination + 1) * sourceSize * 256 + destinationSize) /
+		(2 * (int64)destinationSize) - 128;
+	if (position <= 0)
+		return { 0, 0, 0 };
+	if (position >= (int64)(sourceSize - 1) * 256)
+		return { sourceSize - 1, sourceSize - 1, 0 };
+	const int first = position / 256;
+	return { first, first + 1, (uint)(position % 256) };
+}
+
+// The decoded override is straight-alpha RGBA8888. Interpolate alpha and
+// alpha-weighted RGB, then return straight alpha for the existing compositor.
+// Hidden RGB of transparent texels cannot contaminate the visible edge.
+inline uint32 hiresSpriteBilinearSample(const Graphics::Surface &source,
+		const HiresSpriteFilterAxis &x, const HiresSpriteFilterAxis &y) {
+	assert(source.format == Graphics::PixelFormat::createFormatRGBA32());
+	if (!x.fraction && !y.fraction)
+		return source.getPixel(x.first, y.first); // exact, including transparent RGB
+
+	const uint32 pixels[4] = {
+		source.getPixel(x.first, y.first), source.getPixel(x.second, y.first),
+		source.getPixel(x.first, y.second), source.getPixel(x.second, y.second)
+	};
+	const uint32 weights[4] = {
+		(256 - x.fraction) * (256 - y.fraction), x.fraction * (256 - y.fraction),
+		(256 - x.fraction) * y.fraction, x.fraction * y.fraction
+	};
+	uint32 alpha = 0, red = 0, green = 0, blue = 0;
+	for (int i = 0; i < 4; ++i) {
+		const uint32 alphaWeight = weights[i] * ((pixels[i] >> source.format.aShift) & 255);
+		alpha += alphaWeight;
+		red += alphaWeight * ((pixels[i] >> source.format.rShift) & 255);
+		green += alphaWeight * ((pixels[i] >> source.format.gShift) & 255);
+		blue += alphaWeight * ((pixels[i] >> source.format.bShift) & 255);
+	}
+	const byte outAlpha = (alpha + 32768) / 65536;
+	if (!outAlpha)
+		return 0;
+	return source.format.ARGBToColor(outAlpha, (red + alpha / 2) / alpha,
+		(green + alpha / 2) / alpha, (blue + alpha / 2) / alpha);
 }
 
 // Straight-alpha source-over into an RGBA layer. Premultiplied arithmetic is
