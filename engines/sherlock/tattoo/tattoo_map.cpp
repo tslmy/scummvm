@@ -144,7 +144,9 @@ int TattooMap::show() {
 	// permanent ghost. Wipe the whole hires text layer on map entry so it
 	// always starts blank; _mapTooltip re-registers its own text fresh as
 	// soon as the mouse hovers a location icon.
+#ifdef USE_FREETYPE2
 	screen.clearRoseTattooHiresTextLayer();
+#endif
 
 	// Load the map image and draw it to the back buffer
 	ImageFile *map = new ImageFile("map.vgs");
