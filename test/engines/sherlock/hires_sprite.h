@@ -73,6 +73,74 @@ public:
 		source.free();
 	}
 
+	void testEdgeOpacityRampForAllAlphaPairs() {
+		const Graphics::PixelFormat fmt = Graphics::PixelFormat::createFormatRGBA32();
+		for (int na = 0; na < 256; ++na) {
+			for (int ba = 0; ba < 256; ++ba) {
+				const uint32 n = fmt.ARGBToColor(na, 250, 20, 90);
+				const uint32 b = fmt.ARGBToColor(ba, 4, 210, 40);
+				const int opacity = na < ba ? na : ba;
+				const int weight = opacity > 223 ? opacity - 223 : 0;
+				const uint32 expected = fmt.ARGBToColor(ba,
+					(4 * (32 - weight) + 250 * weight + 16) / 32,
+					(210 * (32 - weight) + 20 * weight + 16) / 32,
+					(40 * (32 - weight) + 90 * weight + 16) / 32);
+				TS_ASSERT_EQUALS(Sherlock::hiresSpriteEdgeSample(fmt, n, b), expected);
+				if (na <= 223) {
+					// Poison all nearest RGB channels: low-alpha and hidden RGB
+					// must not influence the bilinear result at any output alpha.
+					const uint32 poison = fmt.ARGBToColor(na, 0, 255, 0);
+					TS_ASSERT_EQUALS(Sherlock::hiresSpriteEdgeSample(fmt, poison, b), b);
+				}
+			}
+		}
+	}
+
+	void testEdgeOpacityRampContinuityForAllChannelPairs() {
+		const Graphics::PixelFormat fmt = Graphics::PixelFormat::createFormatRGBA32();
+		for (int nearestRed = 0; nearestRed < 256; ++nearestRed) {
+			for (int bilinearRed = 0; bilinearRed < 256; ++bilinearRed) {
+				// Sweep either alpha while holding the other opaque. For every
+				// pair of channel values, one opacity step changes RGB by at
+				// most ceil(255/32) = 8, including both ramp endpoints.
+				for (int axis = 0; axis < 2; ++axis) {
+					int previous = bilinearRed;
+					for (int alpha = 224; alpha <= 255; ++alpha) {
+						const uint32 n = fmt.ARGBToColor(axis ? 255 : alpha, nearestRed, 0, 0);
+						const uint32 b = fmt.ARGBToColor(axis ? alpha : 255, bilinearRed, 0, 0);
+						const int current = (Sherlock::hiresSpriteEdgeSample(fmt, n, b) >> fmt.rShift) & 255;
+						TS_ASSERT(current <= previous + 8 && previous <= current + 8);
+						previous = current;
+					}
+					TS_ASSERT_EQUALS(previous, nearestRed);
+				}
+			}
+		}
+	}
+
+	void testEdgeHolmesShoeThresholdRegression() {
+		const Graphics::PixelFormat fmt = Graphics::PixelFormat::createFormatRGBA32();
+		Graphics::Surface source;
+		source.create(2, 2, fmt);
+		source.setPixel(0, 0, fmt.ARGBToColor(253, 59, 51, 44));
+		source.setPixel(1, 0, fmt.ARGBToColor(255, 182, 179, 169));
+		source.setPixel(0, 1, fmt.ARGBToColor(253, 17, 13, 14));
+		source.setPixel(1, 1, fmt.ARGBToColor(255, 45, 41, 38));
+		const Sherlock::HiresSpriteFilterAxis x = { 0, 1, 5 }, y = { 0, 1, 234 };
+		const uint32 nearest = source.getPixel(1, 0);
+		const uint32 bilinear253 = Sherlock::hiresSpriteBilinearSample(source, x, y);
+		assertARGB(fmt, bilinear253, 253, 21, 17, 17);
+		const uint32 at253 = Sherlock::hiresSpriteEdgeSample(fmt, nearest, bilinear253);
+		source.setPixel(0, 0, fmt.ARGBToColor(255, 59, 51, 44));
+		source.setPixel(0, 1, fmt.ARGBToColor(255, 17, 13, 14));
+		const uint32 bilinear255 = Sherlock::hiresSpriteBilinearSample(source, x, y);
+		assertARGB(fmt, bilinear255, 255, 21, 17, 17);
+		const uint32 at255 = Sherlock::hiresSpriteEdgeSample(fmt, nearest, bilinear255);
+		assertARGB(fmt, at253, 253, 172, 169, 160);
+		assertARGB(fmt, at255, 255, 182, 179, 169);
+		source.free();
+	}
+
 	void testEdgeOneToOneExactWithFlip() {
 		Graphics::Surface source;
 		const Graphics::PixelFormat fmt = Graphics::PixelFormat::createFormatRGBA32();
@@ -109,7 +177,12 @@ public:
 							fmt.colorToARGB(b, ba, br, bg, bb);
 							fmt.colorToARGB(e, ea, er, eg, eb);
 							TS_ASSERT_EQUALS(ea, ba);
-							const uint32 expected = na == 255 && ba == 255 ? n : b;
+							const int opacity = na < ba ? na : ba;
+							const int weight = opacity > 223 ? opacity - 223 : 0;
+							const uint32 expected = fmt.ARGBToColor(ba,
+								(br * (32 - weight) + nr * weight + 16) / 32,
+								(bg * (32 - weight) + ng * weight + 16) / 32,
+								(bb * (32 - weight) + nb * weight + 16) / 32);
 							TS_ASSERT_EQUALS(e, expected);
 							TS_ASSERT_EQUALS(Sherlock::hiresSpriteSourceOver(fmt, e, background),
 								Sherlock::hiresSpriteSourceOver(fmt, expected, background));

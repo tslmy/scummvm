@@ -80,14 +80,28 @@ inline uint32 hiresSpriteBilinearSample(const Graphics::Surface &source,
 		(green + alpha / 2) / alpha, (blue + alpha / 2) / alpha);
 }
 
-// Keep nearest-sampled interior detail only when doing so cannot change the
-// interpolated coverage. All other samples use the premultiplied result,
-// including a transparent nearest texel next to an opaque one.
+// Preserve fully opaque interior detail but avoid a hard color switch when
+// either alpha fluctuates near 255. Blend toward nearest RGB only when both
+// samples are above 223/255 opacity, reaching nearest at 255. A transparent
+// or lower-alpha nearest texel never contributes its potentially hidden RGB.
+// The output alpha is always the premultiplied bilinear sample's alpha.
 inline uint32 hiresSpriteEdgeSample(const Graphics::PixelFormat &format, uint32 nearest, uint32 bilinear) {
 	assert(format == Graphics::PixelFormat::createFormatRGBA32());
 	const uint32 nearestAlpha = (nearest >> format.aShift) & 255;
 	const uint32 bilinearAlpha = (bilinear >> format.aShift) & 255;
-	return nearestAlpha == 255 && bilinearAlpha == 255 ? nearest : bilinear;
+	const uint32 opacity = nearestAlpha < bilinearAlpha ? nearestAlpha : bilinearAlpha;
+	if (opacity <= 223)
+		return bilinear;
+	if (opacity == 255)
+		return nearest;
+	const uint32 weight = opacity - 223; // 1..31 of 32
+	const uint32 red = (((bilinear >> format.rShift) & 255) * (32 - weight) +
+		((nearest >> format.rShift) & 255) * weight + 16) / 32;
+	const uint32 green = (((bilinear >> format.gShift) & 255) * (32 - weight) +
+		((nearest >> format.gShift) & 255) * weight + 16) / 32;
+	const uint32 blue = (((bilinear >> format.bShift) & 255) * (32 - weight) +
+		((nearest >> format.bShift) & 255) * weight + 16) / 32;
+	return format.ARGBToColor(bilinearAlpha, red, green, blue);
 }
 
 // Straight-alpha source-over into an RGBA layer. Premultiplied arithmetic is
