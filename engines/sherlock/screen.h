@@ -85,6 +85,18 @@ private:
 	Graphics::ManagedSurface _roseTattooHiresBackground;
 	Graphics::ManagedSurface _roseTattooHiresComposite;
 
+	struct HiresSpriteCacheEntry {
+		Common::String key;
+		Graphics::Surface *surface; // null also caches an absent asset
+		uint32 lastUsed;
+		uint32 bytes;
+	};
+	Common::Array<HiresSpriteCacheEntry> _roseTattooHiresSpriteCache;
+	uint32 _roseTattooHiresSpriteCacheBytes, _roseTattooHiresSpriteCacheClock;
+	const Graphics::Surface *getRoseTattooHiresSprite(const Common::String &resourceName, int frameIndex,
+		int expectedWidth, int expectedHeight);
+	void clearRoseTattooHiresSpriteCache();
+
 	/**
 	 * True-color RGBA layer that hires text (see queueRoseTattooHiresText())
 	 * is accumulated into, then alpha-blended on top of
@@ -135,18 +147,10 @@ private:
 	 */
 	Graphics::ManagedSurface _roseTattooHiresSpriteLayer;
 
-	/**
-	 * Bounding box (same scaled output-pixel space as the composite/layer)
-	 * of all sprites queued into _roseTattooHiresSpriteLayer so far this
-	 * frame - same purpose as _roseTattooHiresTextNativeRect: lets
-	 * blendRoseTattooHiresSpriteLayer() repaint the smooth hires background
-	 * under the queued area first, so the blocky nearest-neighbor-upscaled
-	 * native sprite pixels the composite's normal foreground pass already
-	 * drew there don't peek out around the crisp override's edges.
-	 */
+	/** Occupied scaled bounds of the persistent UI sprite layer. */
 	Common::Rect _roseTattooHiresSpriteNativeRect;
 
-	/** Occupied scaled bounds of the scene/object sprite override layer. */
+	/** Occupied scaled world-coordinate bounds of the scene sprite layer. */
 	Common::Rect _roseTattooHiresSceneSpriteNativeRect;
 
 	/**
@@ -171,33 +175,18 @@ private:
 	 * modal).
 	 */
 	Graphics::ManagedSurface _roseTattooHiresSceneSpriteLayer;
+	// Final frames baked into the native background by sequence 99. This
+	// world-space layer survives redraws and journal background reloads.
+	Graphics::ManagedSurface _roseTattooHiresBakedSpriteLayer;
+	Common::Rect _roseTattooHiresBakedSpriteRect;
+	void blendRoseTattooHiresBakedSprites();
 
 	/**
-	 * Per-native-pixel (i.e. unscaled SHERLOCK_SCREEN_WIDTH x
-	 * SHERLOCK_SCREEN_HEIGHT) companion to _roseTattooHiresSceneSpriteLayer:
-	 * for every native pixel a queued scene sprite/object covers this
-	 * frame, records the native pixel value _backBuffer1 held immediately
-	 * after that shape's own SHtransBlitFrom() call (see
-	 * queueRoseTattooHiresSceneSprite()). _roseTattooHiresSceneSpriteExpectedValid
-	 * marks which entries were actually written this frame (both arrays are
-	 * reset - the valid one to all-zero - by clearRoseTattooHiresSceneSpriteLayer()).
-	 *
-	 * This exists to fix AI-upscaled characters/objects visibly "floating"
-	 * on top of things that should occlude them: most bg-shape scenery
-	 * (ordinary furniture, doorframes, etc.) has no AI sprite override of
-	 * its own, so when such an un-overridden shape is drawn *after* a
-	 * character in native z-order (correctly occluding it in the plain
-	 * nearest-neighbor-upscaled composite - see the diff loop in
-	 * Screen::update()), nothing ever tells the scene-sprite layer that
-	 * its previously-queued character pixels there are now supposed to be
-	 * hidden again. The same blind spot also affects the right-click verb
-	 * menu, tooltips, and any other UI drawn on top of the scene later in
-	 * the same frame (all native-only content with no AI override).
-	 * blendRoseTattooHiresSceneSpriteLayer() compares this recorded
-	 * "expected" value against the real final native pixel (after every
-	 * later shape/widget in the frame has had its chance to draw) and
-	 * skips blending the AI pixel wherever they differ, letting the
-	 * correctly-occluding native content show through instead.
+	 * World-sized native-pixel provenance. Record the value after the latest
+	 * scene draw wherever its native image or its hires image has coverage.
+	 * At presentation, compare with the scrolled screen pixel: a mismatch
+	 * means a later native UI/mask draw wins over the scene layer. Identical
+	 * palette indices are indistinguishable to this diff-based compositor.
 	 */
 	Common::Array<byte> _roseTattooHiresSceneSpriteExpectedNative;
 	Common::Array<byte> _roseTattooHiresSceneSpriteExpectedValid;
@@ -208,8 +197,8 @@ private:
 	 * asset and alpha-blends it into whichever layer the caller passes
 	 * (letting the two stay on independent lifecycles - see
 	 * _roseTattooHiresSceneSpriteLayer's declaration for why). Returns the
-	 * queued/output-pixel-space rect actually written to (may be empty if
-	 * hires mode isn't active or no override asset was found).
+	 * queued/output-pixel-space rect (empty when hires mode isn't active;
+	 * scene draws without an override replay the native frame instead).
 	 *
 	 * When trackNativeProvenance is true (only passed from
 	 * queueRoseTattooHiresSceneSprite()), also records each written pixel's
@@ -219,7 +208,9 @@ private:
 	 */
 	Common::Rect blitRoseTattooHiresSpriteOverride(Graphics::ManagedSurface &layer,
 		const Common::String &resourceName, int frameIndex, const ImageFrame &nativeFrame,
-		const Common::Point &pt, bool horizFlip, int scaleVal, bool trackNativeProvenance = false);
+		const Common::Point &pt, bool horizFlip, int scaleVal, bool trackNativeProvenance = false,
+		bool opaqueNative = false, bool worldNativeFallback = false);
+	bool roseTattooSceneOwnsPixel(int screenX, int screenY) const;
 protected:
 	SherlockEngine *_vm;
 	Surface _backBuffer;
@@ -466,8 +457,7 @@ public:
 	 * lines up pixel-for-pixel with where the native blit would have drawn.
 	 * When scaleVal isn't SCALE_THRESHOLD (i.e. the object is perspective-
 	 * scaled), the override bitmap (already at hiresScale native
-	 * resolution) is further resized by the same
-	 * nativeFrame.sDrawXSize()/sDrawYSize() ratio the native draw uses, so
+	 * resolution) is resized to the actual SHtransBlitFrom() destination, so
 	 * the crisp override shrinks/grows in lockstep with the blocky native
 	 * fallback rather than staying a fixed size. When horizFlip is true the
 	 * override is mirrored horizontally first, to match SHtransBlitFrom()'s
@@ -494,11 +484,12 @@ public:
 	 * should call clearRoseTattooHiresSceneSpriteLayer() once per frame
 	 * before re-queuing every currently-visible sprite - this layer is
 	 * fully rebuilt each frame, not incrementally erased/re-queued like the
-	 * UI layer.
+	 * UI layer. Coordinates are world-relative; opaqueNative matches the
+	 * offset-free, unflipped, opaque SHblitFrom quick-draw path.
 	 */
 	void queueRoseTattooHiresSceneSprite(const Common::String &resourceName, int frameIndex,
 		const ImageFrame &nativeFrame, const Common::Point &pt, bool horizFlip = false,
-		int scaleVal = SCALE_THRESHOLD);
+		int scaleVal = SCALE_THRESHOLD, bool opaqueNative = false);
 
 	/**
 	 * Blends _roseTattooHiresSceneSpriteLayer on top of the composite -
@@ -513,6 +504,8 @@ public:
 	 * incremental per-rect erasing, is used here).
 	 */
 	void clearRoseTattooHiresSceneSpriteLayer();
+	void bakeRoseTattooHiresSceneSprite(const ImageFile *images, const ImageFrame &frame, const Common::Point &pt);
+	void clearRoseTattooHiresBakedSprites();
 
 	/**
 	 * Like queueRoseTattooHiresSprite(), but bakes the override directly

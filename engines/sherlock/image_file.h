@@ -80,6 +80,7 @@ private:
 	static SherlockEngine *_vm;
 	Common::Array<ImageFrame> _frames;
 	Common::Path _name;
+	Common::String _hiresResource;
 	Common::SeekableReadStream *_stream;
 
 	/**
@@ -105,6 +106,12 @@ public:
 	 */
 	const Common::Path &getFilename() const { return _name; }
 
+	// An override key for images embedded in a room stream. This is separate
+	// from _name: stream-backed frames must remain eagerly decoded.
+	const Common::String &getHiresResource() const { return _hiresResource; }
+	void setHiresResource(const Common::String &resource) { _hiresResource = resource; }
+	Common::String getHiresResourceName() const;
+
 	/**
 	 * Returns the index of the given frame within this file's frame array,
 	 * or -1 if frame doesn't belong to it. Used to recover the frame index
@@ -112,16 +119,18 @@ public:
 	 * for an ImageFrame pointer already selected by scene/animation logic
 	 * (e.g. Object::_imageFrame, Person::_imageFrame) - see
 	 * Screen::queueRoseTattooHiresSprite() callers in tattoo_scene.cpp,
-	 * which need both the owning resource name (getFilename()) and this
-	 * index to look up the matching AI-upscaled override asset.
+	 * which need the owning resource key (getHiresResource() for room
+	 * streams, otherwise getFilename()) and this index.
 	 */
 	int indexOf(const ImageFrame *frame) const {
 		if (!frame || _frames.empty())
 			return -1;
-		const ImageFrame *base = &_frames[0];
-		if (frame < base || frame >= base + _frames.size())
-			return -1;
-		return (int)(frame - base);
+		// A frame can belong to a different ImageFile (alternate NPC sets).
+		// Relational comparison or subtraction of unrelated pointers is undefined.
+		for (uint i = 0; i < _frames.size(); ++i)
+			if (frame == &_frames[i])
+				return (int)i;
+		return -1;
 	}
 
 	byte _palette[256 * 3];

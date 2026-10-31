@@ -131,6 +131,7 @@ int TattooMap::show() {
 	// first drawAllShapes() call naturally repopulates it after the map
 	// closes.
 	screen.clearRoseTattooHiresSceneSpriteLayer();
+	screen.clearRoseTattooHiresBakedSprites();
 
 	// Similarly, any hires tooltip text still registered from the room
 	// scene just left (e.g. the exit-arrow "To the City" label, which is

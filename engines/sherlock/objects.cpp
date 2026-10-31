@@ -367,6 +367,8 @@ bool BaseObject::checkEndOfSequence() {
 				--_frameNumber;
 				screen._backBuffer1.SHtransBlitFrom(*_imageFrame, _position);
 				screen._backBuffer2.SHtransBlitFrom(*_imageFrame, _position);
+				if (IS_ROSE_TATTOO)
+					screen.bakeRoseTattooHiresSceneSprite(_images, *_imageFrame, _position);
 				_type = INVALID;
 			} else if (IS_ROSE_TATTOO && _talkSeq && seq == 0) {
 				setObjTalkSequence(_talkSeq);

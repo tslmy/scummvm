@@ -38,14 +38,13 @@ const int FS_TRANS[8] = {
 };
 
 /**
- * Derives the AI-upscaled-sprite-override resource name (see
- * tools/extract_rosetattoo_sprites.py's "WATSON.VGS" -> "watson_vgs"
- * directory naming convention, also used inline in
- * WidgetInventory::drawInventory()) from an object/person's currently
+ * Derives the sprite override key from an object/person's currently
  * selected ImageFrame and the ImageFile it was drawn from, plus that
  * frame's index within the file (matching the "frame_NNN" numbering
  * upscale_rosetattoo_sprites.py produces - see ImageFile::indexOf()).
- * Returns false (leaving resourceName/frameIndex untouched) if images is
+ * Room ImageFiles carry "scene_NNN/room_NNN" keys, with one-based room
+ * indices; named VGS files retain the "watson_vgs" convention. Returns
+ * false (leaving resourceName/frameIndex untouched) if images is
  * null or imageFrame doesn't actually belong to it - e.g. Sprite/TattooPerson
  * objects can draw from either _images or _altImages depending on which
  * sequence is active, so callers with both should try each in turn.
@@ -59,9 +58,7 @@ static bool resolveRoseTattooHiresSpriteOverride(ImageFile *images, ImageFrame *
 	if (idx < 0)
 		return false;
 
-	resourceName = images->getFilename().baseName();
-	Common::replace(resourceName, ".", "_");
-	resourceName.toLowercase();
+	resourceName = images->getHiresResourceName();
 	frameIndex = idx;
 	return true;
 }
@@ -82,7 +79,8 @@ static void queueRoseTattooHiresObjectOverride(Screen &screen, Object &obj) {
 	// replays the native frame in this exact draw slot, instead of applying it
 	// later as a whole-screen foreground diff.
 	screen.queueRoseTattooHiresSceneSprite(resourceName, frameIndex, *obj._imageFrame, obj._position,
-		(obj._flags & OBJ_FLIPPED) != 0, obj._scaleVal);
+		(obj._flags & OBJ_FLIPPED) != 0, obj._scaleVal,
+		obj._quickDraw && obj._scaleVal == SCALE_THRESHOLD);
 }
 
 /**
@@ -131,6 +129,15 @@ static bool sortImagesY(const ShapeEntry &s1, const ShapeEntry &s2) {
 
 TattooScene::TattooScene(SherlockEngine *vm) : Scene(vm), _labWidget(vm) {
 	_labTableScene = false;
+	_activeCAnimNumber = -1;
+}
+
+void TattooScene::queueHiresCAnim(Screen &screen) {
+	// CAnimations are streamed separately from the room ImageFile array.
+	// Their optional override key uses the zero-based animation and frame IDs.
+	Common::String resource = Common::String::format("scene_%03d/canim_%03d", _currentScene, _activeCAnimNumber);
+	screen.queueRoseTattooHiresSceneSprite(resource, _activeCAnim.frameNumber(), _activeCAnim._imageFrame,
+		_activeCAnim._position, (_activeCAnim._flags & 4) >> 1, _activeCAnim._scaleVal);
 }
 
 bool TattooScene::loadScene(const Common::Path &filename) {
@@ -229,8 +236,7 @@ void TattooScene::drawAllShapes() {
 		screen._backBuffer1.SHtransBlitFrom(_activeCAnim._imageFrame, _activeCAnim._position,
 			(_activeCAnim._flags & 4) >> 1, _activeCAnim._scaleVal);
 	if (_activeCAnim.active() && _activeCAnim._zPlacement == BEHIND)
-		screen.queueRoseTattooHiresSceneSprite(Common::String(), -1, _activeCAnim._imageFrame,
-			_activeCAnim._position, (_activeCAnim._flags & 4) >> 1, _activeCAnim._scaleVal);
+		queueHiresCAnim(screen);
 
 	screen.resetDisplayBounds();
 
@@ -283,8 +289,7 @@ void TattooScene::drawAllShapes() {
 			// It's an active animation
 			screen._backBuffer1.SHtransBlitFrom(_activeCAnim._imageFrame, _activeCAnim._position,
 				(_activeCAnim._flags & 4) >> 1, _activeCAnim._scaleVal);
-			screen.queueRoseTattooHiresSceneSprite(Common::String(), -1, _activeCAnim._imageFrame,
-				_activeCAnim._position, (_activeCAnim._flags & 4) >> 1, _activeCAnim._scaleVal);
+			queueHiresCAnim(screen);
 		} else {
 			// Drawing person
 			TattooPerson &p = *se._person;
@@ -354,8 +359,7 @@ void TattooScene::drawAllShapes() {
 	if (_activeCAnim.active() && _activeCAnim._zPlacement == FORWARD)
 		screen._backBuffer1.SHtransBlitFrom(_activeCAnim._imageFrame, _activeCAnim._position, (_activeCAnim._flags & 4) >> 1, _activeCAnim._scaleVal);
 	if (_activeCAnim.active() && _activeCAnim._zPlacement == FORWARD)
-		screen.queueRoseTattooHiresSceneSprite(Common::String(), -1, _activeCAnim._imageFrame,
-			_activeCAnim._position, (_activeCAnim._flags & 4) >> 1, _activeCAnim._scaleVal);
+		queueHiresCAnim(screen);
 
 	// Draw all NO_SHAPE shapes which have their flag bits clear
 	for (uint idx = 0; idx < _bgShapes.size(); ++idx) {
@@ -765,6 +769,7 @@ int TattooScene::startCAnim(int cAnimNum, int playRate) {
 	_activeCAnim._flags = cAnim._flags;
 	_activeCAnim._scaleVal = cAnim._scaleVal;
 	_activeCAnim._zPlacement = 0;
+	_activeCAnimNumber = cAnimNum;
 
 	_activeCAnim.load(animStream, _compressed);
 

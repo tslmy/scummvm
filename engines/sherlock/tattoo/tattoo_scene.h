@@ -49,6 +49,9 @@ struct SceneTripEntry {
 class TattooScene : public Scene {
 private:
 	WidgetLab _labWidget;
+	int _activeCAnimNumber;
+
+	void queueHiresCAnim(Screen &screen);
 
 	void doBgAnimCheckCursor();
 

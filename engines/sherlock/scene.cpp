@@ -463,6 +463,8 @@ bool Scene::loadScene(const Common::Path &filename) {
 
 				loadRoseTattooBackgroundOverride(screen, _currentScene);
 				screen.loadRoseTattooHiresBackgroundOverride(_currentScene);
+				screen.clearRoseTattooHiresSceneSpriteLayer();
+				screen.clearRoseTattooHiresBakedSprites();
 
 				// Any hires tooltip text still registered from the room just
 				// left (e.g. an exit-arrow label like "To the City") is never
@@ -572,6 +574,12 @@ bool Scene::loadScene(const Common::Path &filename) {
 					rrmStream->readStream(bgInfo[idx]._filesize);
 
 				_images[idx + 1]._images = new ImageFile(*imageStream);
+				if (IS_ROSE_TATTOO) {
+					// The room's image array reserves slot zero; the first embedded
+					// chunk is therefore room_001, not room_000.
+					_images[idx + 1]._images->setHiresResource(Common::String::format(
+						"scene_%03d/room_%03d", _currentScene, idx + 1));
+				}
 
 				delete imageStream;
 			}

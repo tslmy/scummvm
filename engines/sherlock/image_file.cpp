@@ -34,6 +34,15 @@ void ImageFile::setVm(SherlockEngine *vm) {
 	_vm = vm;
 }
 
+Common::String ImageFile::getHiresResourceName() const {
+	if (!_hiresResource.empty())
+		return _hiresResource;
+	Common::String result = _name.baseName();
+	Common::replace(result, ".", "_");
+	result.toLowercase();
+	return result;
+}
+
 ImageFile::ImageFile() {
 	_stream = nullptr;
 }

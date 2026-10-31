@@ -89,6 +89,9 @@ void TattooJournal::show() {
 		screen.clearRoseTattooHiresTextLayer();
 #endif
 		screen.clearRoseTattooHiresSpriteLayer();
+		// The room's per-frame scene layer/provenance must not be replayed
+		// over unrelated journal pixels which happen to use the same indices.
+		screen.clearRoseTattooHiresSceneSpriteLayer();
 	}
 
 	// Load journal images
