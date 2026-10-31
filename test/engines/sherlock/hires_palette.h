@@ -79,4 +79,39 @@ public:
 		active.set(room, 0, Graphics::PALETTE_COUNT);
 		TS_ASSERT_EQUALS(active.color(rgba, 7), rgba.RGBToColor(200, 8, 16));
 	}
+
+	void testBlackRequiresEveryInstalledComponentToBeZero() {
+		Sherlock::RoseTattooHiresPalette active;
+		TS_ASSERT(active.isBlack());
+
+		const byte blue[] = { 0, 0, 1 };
+		const byte black[] = { 0, 0, 0 };
+		active.set(blue, 255, 1);
+		TS_ASSERT(!active.isBlack());
+		active.set(black, 0, 1);
+		TS_ASSERT(!active.isBlack());
+		active.set(black, 255, 1);
+		TS_ASSERT(active.isBlack());
+
+		const byte red[] = { 1, 0, 0 };
+		active.set(red, 0, 1);
+		TS_ASSERT(!active.isBlack());
+		active.set(black, 0, 1);
+		TS_ASSERT(active.isBlack());
+		active.set(black, Graphics::PALETTE_COUNT, 0);
+		TS_ASSERT(active.isBlack());
+
+		// Even a single nonzero component at any palette index must resume
+		// normal presentation, including partial palette updates.
+		for (uint entry = 0; entry < Graphics::PALETTE_COUNT; ++entry) {
+			for (uint component = 0; component < 3; ++component) {
+				byte one[] = { 0, 0, 0 };
+				one[component] = 1;
+				active.set(one, entry, 1);
+				TS_ASSERT(!active.isBlack());
+				active.set(black, entry, 1);
+				TS_ASSERT(active.isBlack());
+			}
+		}
+	}
 };

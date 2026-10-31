@@ -35,6 +35,14 @@ public:
 		Common::copy(_colors + start * 3, _colors + (start + num) * 3, palette);
 	}
 
+	bool isBlack() const {
+		for (uint i = 0; i < Graphics::PALETTE_SIZE; ++i) {
+			if (_colors[i] != 0)
+				return false;
+		}
+		return true;
+	}
+
 	uint32 color(const Graphics::PixelFormat &format, byte index, byte alpha = 255) const {
 		if (format.isCLUT8())
 			return index;

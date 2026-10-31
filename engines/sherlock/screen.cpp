@@ -978,6 +978,20 @@ void Screen::clearRoseTattooHiresTextLayer() {
 }
 #endif
 
+void Screen::presentRoseTattooHiresFrame(int width, int height) {
+	// Every native index resolves to black at this exact palette endpoint.
+	// Keep composing normally so transient text bookkeeping and retained
+	// layers follow their usual lifecycles; blacken only the presented frame.
+	// The backend-owned true-color cursor is deliberately left unchanged.
+	if (!_roseTattooHiresFormat.isCLUT8() && _roseTattooPalette.isBlack())
+		_roseTattooHiresComposite.clear(_roseTattooHiresFormat.RGBToColor(0, 0, 0));
+
+	g_system->copyRectToScreen((const byte *)_roseTattooHiresComposite.getPixels(),
+		_roseTattooHiresComposite.pitch, 0, 0, width, height);
+	updateScreen();
+	_dirtyRects.clear();
+}
+
 void Screen::update() {
 	if (_roseTattooHiresScale <= 1) {
 		Graphics::Screen::update();
@@ -1030,10 +1044,7 @@ void Screen::update() {
 		blendRoseTattooHiresSceneSpriteLayer();
 #endif
 		blendRoseTattooHiresSpriteLayer();
-		g_system->copyRectToScreen((const byte *)_roseTattooHiresComposite.getPixels(),
-			_roseTattooHiresComposite.pitch, 0, 0, outWidth, outHeight);
-		updateScreen();
-		_dirtyRects.clear();
+		presentRoseTattooHiresFrame(outWidth, outHeight);
 		return;
 	}
 
@@ -1075,10 +1086,7 @@ void Screen::update() {
 		blendRoseTattooHiresSceneSpriteLayer();
 #endif
 		blendRoseTattooHiresSpriteLayer();
-		g_system->copyRectToScreen((const byte *)_roseTattooHiresComposite.getPixels(),
-			_roseTattooHiresComposite.pitch, 0, 0, outWidth, outHeight);
-		updateScreen();
-		_dirtyRects.clear();
+		presentRoseTattooHiresFrame(outWidth, outHeight);
 		return;
 	}
 
@@ -1124,10 +1132,7 @@ void Screen::update() {
 	blendRoseTattooHiresTextLayer();
 #endif
 	blendRoseTattooHiresSpriteLayer();
-	g_system->copyRectToScreen((const byte *)_roseTattooHiresComposite.getPixels(),
-		_roseTattooHiresComposite.pitch, 0, 0, outWidth, outHeight);
-	updateScreen();
-	_dirtyRects.clear();
+	presentRoseTattooHiresFrame(outWidth, outHeight);
 }
 
 void Screen::activateBackBuffer1() {

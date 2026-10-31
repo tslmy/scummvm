@@ -58,6 +58,7 @@ private:
 	 * validated against _backBuffer1's current dimensions * hiresScale.
 	 */
 	bool loadRoseTattooHiresBackgroundFromPath(const Common::Path &overridePath);
+	void presentRoseTattooHiresFrame(int width, int height);
 
 #ifdef USE_FREETYPE2
 	/**
