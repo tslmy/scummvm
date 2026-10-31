@@ -27,6 +27,7 @@
 #include "sherlock/saveload.h"
 #include "sherlock/screen.h"
 #include "sherlock/user_interface.h"
+#include "sherlock/tattoo/mask_trace.h"
 #include "sherlock/tattoo/widget_credits.h"
 #include "sherlock/tattoo/widget_files.h"
 #include "sherlock/tattoo/widget_inventory.h"
@@ -66,6 +67,8 @@ private:
 	WidgetList _widgets;
 	byte _lookupTable[Graphics::PALETTE_COUNT];
 	byte _lookupTable1[Graphics::PALETTE_COUNT];
+	MaskTraceWriter _maskTraceWriter;
+	MaskTraceFrame *_maskTraceFrame;
 private:
 	/**
 	 * Handle any input when we're in standard mode (with no windows open)
@@ -189,6 +192,7 @@ public:
 	 * Draws overlays onto the scene. Basically, the smoke effects some scenes have
 	 */
 	void drawMaskArea(bool mode);
+	void maskTraceSceneEnded() { _maskTraceWriter.sceneEnded(); }
 
 	/**
 	 * Takes the data passed in the image and apply it to the surface at the given position.

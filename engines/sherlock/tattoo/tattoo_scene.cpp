@@ -403,6 +403,8 @@ void TattooScene::checkBgShapes() {
 
 void TattooScene::freeScene() {
 	TattooUserInterface &ui = *(TattooUserInterface *)_vm->_ui;
+	if (_currentScene != -1)
+		ui.maskTraceSceneEnded();
 	Scene::freeScene();
 
 	// Delete any scene overlays that were used by the scene

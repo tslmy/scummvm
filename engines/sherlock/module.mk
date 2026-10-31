@@ -26,6 +26,7 @@ MODULE_OBJS = \
 	tattoo/tattoo_fixed_text.o \
 	tattoo/tattoo_inventory.o \
 	tattoo/tattoo_journal.o \
+	tattoo/mask_trace.o \
 	tattoo/tattoo_map.o \
 	tattoo/tattoo_people.o \
 	tattoo/tattoo_resources.o \
