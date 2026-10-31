@@ -30,8 +30,9 @@ inline bool canUseRoseTattooHiresKey(const Common::String &name, bool isRoseTatt
 }
 
 inline Common::String roseTattooHiresSpriteCacheKey(const Common::String &resourceName,
-		int frameIndex, int width, int height) {
-	return Common::String::format("%s:%d:%dx%d", resourceName.c_str(), frameIndex, width, height);
+		int frameIndex, int width, int height, const Common::String &discriminator = Common::String()) {
+	return Common::String::format("%s:%d:%dx%d|palette:%s", resourceName.c_str(), frameIndex,
+		width, height, discriminator.c_str());
 }
 
 inline bool roseTattooHiresSpriteDimensionsMatch(int width, int height, int expectedWidth, int expectedHeight) {

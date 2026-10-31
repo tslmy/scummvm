@@ -96,9 +96,10 @@ static void queueRoseTattooHiresPersonOverride(Screen &screen, TattooPerson &p,
 		const Common::Point &pt, bool horizFlip, int scaleVal) {
 	Common::String resourceName;
 	int frameIndex = -1;
-	resolveRoseTattooHiresSpriteOverride(p._images, p._imageFrame, resourceName, frameIndex) ||
-		resolveRoseTattooHiresSpriteOverride(p._altImages, p._imageFrame, resourceName, frameIndex);
-	screen.queueRoseTattooHiresSceneSprite(resourceName, frameIndex, *p._imageFrame, pt, horizFlip, scaleVal);
+	ImageFile *owner = roseTattooPersonFrameOwner(p._images, p._altImages, p._imageFrame, frameIndex);
+	if (owner)
+		resourceName = owner->getHiresResourceName();
+	screen.queueRoseTattooHiresPersonSprite(owner, resourceName, frameIndex, *p._imageFrame, pt, horizFlip, scaleVal);
 }
 
 /*----------------------------------------------------------------*/

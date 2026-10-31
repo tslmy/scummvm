@@ -389,10 +389,11 @@ void Screen::clearRoseTattooHiresSpriteCache() {
 }
 
 const Graphics::Surface *Screen::getRoseTattooHiresSprite(const Common::String &resourceName, int frameIndex,
-		int expectedWidth, int expectedHeight) {
+		int expectedWidth, int expectedHeight, const Common::String &cacheDiscriminator) {
 	if (resourceName.empty() || frameIndex < 0)
 		return nullptr;
-	const Common::String key = roseTattooHiresSpriteCacheKey(resourceName, frameIndex, expectedWidth, expectedHeight);
+	const Common::String key = roseTattooHiresSpriteCacheKey(resourceName, frameIndex, expectedWidth,
+		expectedHeight, cacheDiscriminator);
 	for (uint i = 0; i < _roseTattooHiresSpriteCache.size(); ++i) {
 		HiresSpriteCacheEntry &entry = _roseTattooHiresSpriteCache[i];
 		if (entry.key == key) {
@@ -439,7 +440,7 @@ const Graphics::Surface *Screen::getRoseTattooHiresSprite(const Common::String &
 Common::Rect Screen::blitRoseTattooHiresSpriteOverride(Graphics::ManagedSurface &layer,
 		const Common::String &resourceName, int frameIndex, const ImageFrame &nativeFrame,
 		const Common::Point &pt, bool horizFlip, int scaleVal, bool trackNativeProvenance, bool opaqueNative,
-		bool worldNativeFallback) {
+		bool worldNativeFallback, const Common::String &cacheDiscriminator) {
 	if (_roseTattooHiresScale <= 1 || _roseTattooHiresFormat.isCLUT8())
 		return Common::Rect();
 
@@ -452,7 +453,7 @@ Common::Rect Screen::blitRoseTattooHiresSpriteOverride(Graphics::ManagedSurface 
 		return Common::Rect();
 
 	const Graphics::Surface *overrideSurface = getRoseTattooHiresSprite(resourceName, frameIndex,
-		srcW * scale, srcH * scale);
+		srcW * scale, srcH * scale, cacheDiscriminator);
 	const bool hasOverride = overrideSurface != nullptr;
 	// UI has its native draw already; the scene needs a replay even for a
 	// missing override so that native sprites keep their exact z-order.
@@ -535,18 +536,54 @@ void Screen::queueRoseTattooHiresSprite(const Common::String &resourceName, int 
 }
 
 void Screen::queueRoseTattooHiresSceneSprite(const Common::String &resourceName, int frameIndex,
-		const ImageFrame &nativeFrame, const Common::Point &pt, bool horizFlip, int scaleVal, bool opaqueNative) {
+		const ImageFrame &nativeFrame, const Common::Point &pt, bool horizFlip, int scaleVal, bool opaqueNative,
+		const Common::String &cacheDiscriminator) {
 	// This call is made next to every native scene draw, in draw order. The
 	// layer is composited before the remaining native UI diff, so tooltip and
 	// menu pixels retain their normal priority.
 	Common::Rect queuedRect = blitRoseTattooHiresSpriteOverride(_roseTattooHiresSceneSpriteLayer,
-		resourceName, frameIndex, nativeFrame, pt, horizFlip, scaleVal, true, opaqueNative);
+		resourceName, frameIndex, nativeFrame, pt, horizFlip, scaleVal, true, opaqueNative, false, cacheDiscriminator);
 	if (!queuedRect.isEmpty()) {
 		if (_roseTattooHiresSceneSpriteNativeRect.isEmpty())
 			_roseTattooHiresSceneSpriteNativeRect = queuedRect;
 		else
 			_roseTattooHiresSceneSpriteNativeRect.extend(queuedRect);
 	}
+}
+
+void Screen::queueRoseTattooHiresPersonSprite(ImageFile *owner, const Common::String &legacyResource,
+		int frameIndex, const ImageFrame &nativeFrame, const Common::Point &pt, bool horizFlip, int scaleVal) {
+	const char *mode = getenv("SCUMMVM_SHERLOCK_TATTOO_PALETTE_SAFE_SPRITES");
+	if (!IS_ROSE_TATTOO || IS_3DO || !mode || strcmp(mode, "1")) {
+		queueRoseTattooHiresSceneSprite(legacyResource, frameIndex, nativeFrame, pt, horizFlip, scaleVal);
+		return;
+	}
+
+	Common::String resource, discriminator;
+	const char *overrideDir = getenv("SCUMMVM_SHERLOCK_TATTOO_ASSET_OVERRIDES");
+	if (_roseTattooHiresScale > 1 && !_roseTattooHiresFormat.isCLUT8() && owner && frameIndex >= 0 &&
+			overrideDir && *overrideDir && owner->indexOf(&nativeFrame) == frameIndex) {
+		const Common::String &source = owner->getPersonHiresIdentity();
+		const RoseTattooPersonIndices *indices = source.empty() ? nullptr : owner->getPersonOpaqueIndices();
+		if (indices) {
+			const Common::Array<byte> payload = roseTattooPersonPalettePayload(*indices, _roseTattooPalette);
+			const Common::String candidate = roseTattooPersonPaletteResource(source, payload);
+			if (!candidate.empty()) {
+				const Common::Path path(Common::String::format("%s/sprites/%s/palette.bin",
+					overrideDir, candidate.c_str()), '/');
+				const Common::FSNode node(path);
+				Common::File sidecar;
+				if (node.exists() && sidecar.open(node)) {
+					resource = roseTattooPersonVerifiedResource(candidate, &sidecar, payload);
+				}
+				if (!resource.empty())
+					discriminator = roseTattooPersonPaletteCacheDiscriminator(payload);
+			}
+		}
+	}
+	// An empty resource deliberately invokes the native replay, not the legacy
+	// name-only lookup. Validate the sidecar even on decoded-cache hits.
+	queueRoseTattooHiresSceneSprite(resource, frameIndex, nativeFrame, pt, horizFlip, scaleVal, false, discriminator);
 }
 
 bool Screen::roseTattooSceneOwnsPixel(int screenX, int screenY) const {

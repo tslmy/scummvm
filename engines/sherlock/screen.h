@@ -96,7 +96,7 @@ private:
 	Common::Array<HiresSpriteCacheEntry> _roseTattooHiresSpriteCache;
 	uint32 _roseTattooHiresSpriteCacheBytes, _roseTattooHiresSpriteCacheClock;
 	const Graphics::Surface *getRoseTattooHiresSprite(const Common::String &resourceName, int frameIndex,
-		int expectedWidth, int expectedHeight);
+		int expectedWidth, int expectedHeight, const Common::String &cacheDiscriminator);
 	void clearRoseTattooHiresSpriteCache();
 
 	/**
@@ -211,7 +211,8 @@ private:
 	Common::Rect blitRoseTattooHiresSpriteOverride(Graphics::ManagedSurface &layer,
 		const Common::String &resourceName, int frameIndex, const ImageFrame &nativeFrame,
 		const Common::Point &pt, bool horizFlip, int scaleVal, bool trackNativeProvenance = false,
-		bool opaqueNative = false, bool worldNativeFallback = false);
+		bool opaqueNative = false, bool worldNativeFallback = false,
+		const Common::String &cacheDiscriminator = Common::String());
 	bool roseTattooSceneOwnsPixel(int screenX, int screenY) const;
 protected:
 	SherlockEngine *_vm;
@@ -491,7 +492,13 @@ public:
 	 */
 	void queueRoseTattooHiresSceneSprite(const Common::String &resourceName, int frameIndex,
 		const ImageFrame &nativeFrame, const Common::Point &pt, bool horizFlip = false,
-		int scaleVal = SCALE_THRESHOLD, bool opaqueNative = false);
+		int scaleVal = SCALE_THRESHOLD, bool opaqueNative = false,
+		const Common::String &cacheDiscriminator = Common::String());
+
+	// Person transblits have a stricter, opt-in source/palette-qualified lookup.
+	// Failure still queues the native frame in the same scene draw slot.
+	void queueRoseTattooHiresPersonSprite(ImageFile *owner, const Common::String &legacyResource,
+		int frameIndex, const ImageFrame &nativeFrame, const Common::Point &pt, bool horizFlip, int scaleVal);
 
 	/**
 	 * Blends _roseTattooHiresSceneSpriteLayer on top of the composite -

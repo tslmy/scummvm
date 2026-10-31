@@ -57,6 +57,8 @@ ImageFile::ImageFile(const Common::Path &name, bool skipPal, bool animImages) {
 	// on decent hardware.
 
 	_name = name;
+	_hiresSkipPalette = skipPal;
+	_hiresAnimImages = animImages;
 	_stream = _vm->_res->load(name);
 	if (IS_ROSE_TATTOO && !IS_3DO) {
 		Common::String key = name.baseName();
@@ -100,6 +102,82 @@ uint ImageFile::size() {
 
 void ImageFile::push_back(const ImageFrame &frame) {
 	_frames.push_back(frame);
+	_personIndicesAttempted = false;
+}
+
+const Common::String &ImageFile::getPersonHiresIdentity() {
+	if (!_personIdentityAttempted) {
+		_personIdentityAttempted = true;
+		if (_stream && !_name.empty() && !_stream->err() && !_stream->eos()) {
+			Common::String key = _name.baseName();
+			Common::replace(key, ".", "_");
+			key.toLowercase();
+			const int64 originalPos = _stream->pos();
+			_personIdentity = roseTattooHiresVariantKey(key, *_stream, _hiresSkipPalette, _hiresAnimImages);
+			// A failed extra probe must not leave a new error/eos state for the
+			// game's normal lazy decoder.
+			if (_stream->err() || _stream->eos() || _stream->pos() != originalPos) {
+				_stream->clearErr();
+				if (originalPos >= 0)
+					_stream->seek(originalPos);
+				_personIdentity.clear();
+			}
+		}
+	}
+	return _personIdentity;
+}
+
+const RoseTattooPersonIndices *ImageFile::getPersonOpaqueIndices() {
+	if (_personIndicesAttempted)
+		return _personIndicesValid ? &_personIndices : nullptr;
+	_personIndicesAttempted = true;
+	_personIndicesValid = false;
+	_personIndices = RoseTattooPersonIndices();
+	if (_frames.empty() || !_stream || _stream->err() || _stream->eos())
+		return nullptr;
+
+	const int64 originalPos = _stream->pos(), streamSize = _stream->size();
+	if (originalPos < 0 || streamSize < 0 || originalPos > streamSize)
+		return nullptr;
+	bool valid = true;
+	for (uint i = 0; i < _frames.size() && valid; ++i) {
+		const ImageFrame &frame = _frames[i];
+		if (frame._decoded) {
+			valid = _personIndices.add(frame._frame);
+			continue;
+		}
+		// Decode to a temporary surface, not into the array: existing frame
+		// pointers, laziness and ownership must be unchanged. Some callers
+		// have already decoded a frame without setting _decoded, so never
+		// free a shallow copy of its surface.
+		if (frame._width > 32767 || frame._height > 32767 || frame._size > (uint32)-1 - 4 ||
+				(int64)frame._pos > streamSize || (int64)frame._size > streamSize - frame._pos ||
+				!_stream->seek(frame._pos)) {
+			valid = false;
+			break;
+		}
+		byte *data = new byte[frame._size + 4];
+		const uint32 read = _stream->read(data, frame._size);
+		if (read != frame._size || _stream->err()) {
+			delete[] data;
+			valid = false;
+			break;
+		}
+		Common::fill(data + frame._size, data + frame._size + 4, 0);
+		ImageFrame copy = frame;
+		copy._frame = Graphics::Surface();
+		copy.decompressFrame(data, true);
+		delete[] data;
+		valid = _personIndices.add(copy._frame);
+		copy._frame.free();
+	}
+	if (_stream->err() || _stream->eos()) {
+		valid = false;
+		_stream->clearErr();
+	}
+	const bool restored = _stream->seek(originalPos) && _stream->pos() == originalPos;
+	_personIndicesValid = valid && restored && !_stream->err() && !_stream->eos();
+	return _personIndicesValid ? &_personIndices : nullptr;
 }
 
 void ImageFile::decodeFrame(ImageFrame &frame) {

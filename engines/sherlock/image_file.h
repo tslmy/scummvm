@@ -28,6 +28,7 @@
 #include "common/rect.h"
 #include "common/stream.h"
 #include "graphics/surface.h"
+#include "sherlock/hires_palette_sprite.h"
 
 namespace Sherlock {
 
@@ -85,6 +86,10 @@ private:
 	// even when computing its content identity fails.
 	bool _hiresResourceRequiresIdentity = false;
 	Common::SeekableReadStream *_stream;
+	bool _hiresSkipPalette = false, _hiresAnimImages = false;
+	bool _personIdentityAttempted = false, _personIndicesAttempted = false, _personIndicesValid = false;
+	Common::String _personIdentity;
+	RoseTattooPersonIndices _personIndices;
 
 	/**
 	 * Load the data of the sprite
@@ -114,6 +119,11 @@ public:
 	const Common::String &getHiresResource() const { return _hiresResource; }
 	void setHiresResource(const Common::String &resource) { _hiresResource = resource; }
 	Common::String getHiresResourceName() const;
+
+	// Used only for opt-in person sprites. Stream-backed/unnamed images have
+	// no reliable standalone source identity and therefore fail closed.
+	const Common::String &getPersonHiresIdentity();
+	const RoseTattooPersonIndices *getPersonOpaqueIndices();
 
 	/**
 	 * Returns the index of the given frame within this file's frame array,
