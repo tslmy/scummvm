@@ -22,6 +22,7 @@
 #define FORBIDDEN_SYMBOL_EXCEPTION_getenv
 
 #include "sherlock/screen.h"
+#include "sherlock/hires_resource.h"
 #include "sherlock/hires_sprite.h"
 #include "sherlock/sherlock.h"
 #include "sherlock/scalpel/scalpel_screen.h"
@@ -310,6 +311,10 @@ bool Screen::loadRoseTattooHiresCursorOverride(const Common::String &resourceNam
 		Graphics::Surface &outSurface) {
 	if (_roseTattooHiresScale <= 1)
 		return false;
+	// Never consume a legacy name-only override for the ambiguous PC images,
+	// including callers which do not obtain their key from an ImageFile.
+	if (!canUseRoseTattooHiresKey(resourceName, IS_ROSE_TATTOO, IS_3DO))
+		return false;
 
 	const char *overrideDir = getenv("SCUMMVM_SHERLOCK_TATTOO_ASSET_OVERRIDES");
 	if (!overrideDir || !*overrideDir)
@@ -387,8 +392,7 @@ const Graphics::Surface *Screen::getRoseTattooHiresSprite(const Common::String &
 		int expectedWidth, int expectedHeight) {
 	if (resourceName.empty() || frameIndex < 0)
 		return nullptr;
-	const Common::String key = Common::String::format("%s:%d:%dx%d", resourceName.c_str(), frameIndex,
-		expectedWidth, expectedHeight);
+	const Common::String key = roseTattooHiresSpriteCacheKey(resourceName, frameIndex, expectedWidth, expectedHeight);
 	for (uint i = 0; i < _roseTattooHiresSpriteCache.size(); ++i) {
 		HiresSpriteCacheEntry &entry = _roseTattooHiresSpriteCache[i];
 		if (entry.key == key) {
@@ -401,7 +405,7 @@ const Graphics::Surface *Screen::getRoseTattooHiresSprite(const Common::String &
 	if (!loadRoseTattooHiresCursorOverride(resourceName, frameIndex, *surface)) {
 		delete surface;
 		surface = nullptr;
-	} else if (surface->w != expectedWidth || surface->h != expectedHeight) {
+	} else if (!roseTattooHiresSpriteDimensionsMatch(surface->w, surface->h, expectedWidth, expectedHeight)) {
 		warning("Ignoring Rose Tattoo hires sprite %s frame %d: unexpected dimensions", resourceName.c_str(), frameIndex);
 		surface->free();
 		delete surface;

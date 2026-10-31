@@ -598,9 +598,7 @@ void WidgetInventory::drawInventory() {
 			// resource directory naming) - quietly falls back to the plain
 			// nearest-neighbor-upscaled native blit above when hires mode
 			// isn't active or no override asset exists for this item.
-			Common::String resourceName = inv._invShapes[idx]->getFilename().baseName();
-			Common::replace(resourceName, ".", "_");
-			resourceName.toLowercase();
+			const Common::String resourceName = inv._invShapes[idx]->getHiresResourceName();
 			screen.queueRoseTattooHiresSprite(resourceName, 0, img,
 				Common::Point(_bounds.left + imgPt.x, _bounds.top + imgPt.y));
 		}

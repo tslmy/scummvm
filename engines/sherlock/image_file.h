@@ -81,6 +81,9 @@ private:
 	Common::Array<ImageFrame> _frames;
 	Common::Path _name;
 	Common::String _hiresResource;
+	// An ambiguous named resource must never fall back to its unqualified name,
+	// even when computing its content identity fails.
+	bool _hiresResourceRequiresIdentity = false;
 	Common::SeekableReadStream *_stream;
 
 	/**

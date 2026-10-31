@@ -20,6 +20,7 @@
  */
 
 #include "sherlock/image_file.h"
+#include "sherlock/hires_resource.h"
 #include "sherlock/screen.h"
 #include "sherlock/sherlock.h"
 #include "common/debug.h"
@@ -35,7 +36,7 @@ void ImageFile::setVm(SherlockEngine *vm) {
 }
 
 Common::String ImageFile::getHiresResourceName() const {
-	if (!_hiresResource.empty())
+	if (_hiresResourceRequiresIdentity || !_hiresResource.empty())
 		return _hiresResource;
 	Common::String result = _name.baseName();
 	Common::replace(result, ".", "_");
@@ -57,6 +58,15 @@ ImageFile::ImageFile(const Common::Path &name, bool skipPal, bool animImages) {
 
 	_name = name;
 	_stream = _vm->_res->load(name);
+	if (IS_ROSE_TATTOO && !IS_3DO) {
+		Common::String key = name.baseName();
+		Common::replace(key, ".", "_");
+		key.toLowercase();
+		if (isAmbiguousRoseTattooHiresResource(key)) {
+			_hiresResourceRequiresIdentity = true;
+			_hiresResource = roseTattooHiresVariantKey(key, *_stream, skipPal, animImages);
+		}
+	}
 
 	Common::fill(&_palette[0], &_palette[Graphics::PALETTE_SIZE], 0);
 	load(*_stream, skipPal, animImages);
