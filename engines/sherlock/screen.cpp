@@ -139,7 +139,6 @@ Screen::Screen(SherlockEngine *vm) : BaseSurface(
 	Common::fill(&_cMap[0], &_cMap[Graphics::PALETTE_SIZE], 0);
 	Common::fill(&_sMap[0], &_sMap[Graphics::PALETTE_SIZE], 0);
 	Common::fill(&_tMap[0], &_tMap[Graphics::PALETTE_SIZE], 0);
-	Common::fill(&_roseTattooPalette[0], &_roseTattooPalette[Graphics::PALETTE_SIZE], 0);
 
 	// Set up the initial font
 	setFont(IS_SERRATED_SCALPEL ? 1 : 4);
@@ -172,9 +171,7 @@ void Screen::getPalette(byte palette[Graphics::PALETTE_SIZE]) {
 
 void Screen::getPalette(byte *palette, uint start, uint num) {
 	if (_roseTattooHiresScale > 1 && !_roseTattooHiresFormat.isCLUT8()) {
-		assert(start + num <= Graphics::PALETTE_COUNT);
-		Common::copy(&_roseTattooPalette[start * 3],
-			&_roseTattooPalette[(start + num) * 3], palette);
+		_roseTattooPalette.get(palette, start, num);
 		return;
 	}
 
@@ -186,8 +183,7 @@ void Screen::setPalette(const byte palette[Graphics::PALETTE_SIZE]) {
 }
 
 void Screen::setPalette(const byte *palette, uint start, uint num) {
-	assert(start + num <= Graphics::PALETTE_COUNT);
-	Common::copy(palette, palette + num * 3, &_roseTattooPalette[start * 3]);
+	_roseTattooPalette.set(palette, start, num);
 
 	if (_roseTattooHiresScale > 1 && !_roseTattooHiresFormat.isCLUT8()) {
 		// Graphics::Screen::setPalette() forwards to
@@ -500,8 +496,8 @@ Common::Rect Screen::blitRoseTattooHiresSpriteOverride(Graphics::ManagedSurface 
 					sourceX = overrideSurface->w - 1 - sourceX;
 				pixel = overrideSurface->getPixel(sourceX, sy * overrideSurface->h / height);
 			} else {
-				pixel = layer.format.ARGBToColor(opaqueNative || index != TRANSPARENCY ? 255 : 0,
-					_cMap[index * 3], _cMap[index * 3 + 1], _cMap[index * 3 + 2]);
+				pixel = _roseTattooPalette.color(layer.format, index,
+					opaqueNative || index != TRANSPARENCY ? 255 : 0);
 			}
 
 			uint8 a, r, g, b;
@@ -1015,9 +1011,7 @@ void Screen::update() {
 				if (roseTattooSceneOwnsPixel(x, y) && worldX >= 0 && worldX < _backBuffer2.w &&
 						worldY >= 0 && worldY < _backBuffer2.h)
 					nativePixel = _backBuffer2.getPixel(worldX, worldY);
-				const uint32 outputPixel = _roseTattooHiresFormat.isCLUT8() ? nativePixel :
-					_roseTattooHiresFormat.RGBToColor(_cMap[nativePixel * 3],
-						_cMap[nativePixel * 3 + 1], _cMap[nativePixel * 3 + 2]);
+				const uint32 outputPixel = _roseTattooPalette.color(_roseTattooHiresFormat, nativePixel);
 				for (int yy = 0; yy < scale; ++yy) {
 					for (int xx = 0; xx < scale; ++xx)
 						_roseTattooHiresComposite.setPixel(x * scale + xx, y * scale + yy, outputPixel);
@@ -1114,9 +1108,7 @@ void Screen::update() {
 				continue;
 
 			const uint32 outputPixel = _roseTattooHiresDebugMode == kRoseTattooHiresMask ? maskOn :
-				_roseTattooHiresFormat.isCLUT8() ? nativePixel :
-				_roseTattooHiresFormat.RGBToColor(_cMap[nativePixel * 3],
-					_cMap[nativePixel * 3 + 1], _cMap[nativePixel * 3 + 2]);
+				_roseTattooPalette.color(_roseTattooHiresFormat, nativePixel);
 			for (int yy = 0; yy < scale; ++yy) {
 				for (int xx = 0; xx < scale; ++xx)
 					_roseTattooHiresComposite.setPixel(x * scale + xx, y * scale + yy, outputPixel);

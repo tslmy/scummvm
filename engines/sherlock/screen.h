@@ -28,6 +28,7 @@
 #include "common/path.h"
 #include "common/rect.h"
 #include "graphics/managed_surface.h"
+#include "sherlock/hires_palette.h"
 #include "sherlock/image_file.h"
 #include "sherlock/surface.h"
 #include "sherlock/resources.h"
@@ -81,7 +82,7 @@ private:
 	bool _roseTattooHiresJournalMode;
 	int _roseTattooHiresDebugMode;
 	Graphics::PixelFormat _roseTattooHiresFormat;
-	byte _roseTattooPalette[Graphics::PALETTE_SIZE];
+	RoseTattooHiresPalette _roseTattooPalette;
 	Graphics::ManagedSurface _roseTattooHiresBackground;
 	Graphics::ManagedSurface _roseTattooHiresComposite;
 

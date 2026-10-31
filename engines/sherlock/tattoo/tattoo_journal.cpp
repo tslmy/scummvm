@@ -97,33 +97,11 @@ void TattooJournal::show() {
 	// Load journal images
 	_journalImages = new ImageFile("journal.vgs");
 
-	// Load palette. This is read directly into screen._cMap (mirroring
-	// TattooMap::show()'s convention for the same reason) rather than a
-	// local buffer: _cMap is what the Rose Tattoo hires compositor's
-	// nearest-neighbor fallback path (see Screen::update()) uses to convert
-	// native palette-index pixels to RGB when producing the hires composite.
-	// Loading the journal's own distinct palette into a local-only buffer
-	// left _cMap holding the previous room's palette while the on-screen
-	// pixel indices now referred to the journal's own palette entries -
-	// each hires frame then looked up journal pixel indices in the wrong
-	// (room) palette, producing scrambled/staticky colors over the whole
-	// journal.
-	//
-	// Unlike TattooMap::show() - which always returns into a fresh
-	// Scene::loadScene() call that reloads the room's own palette into
-	// _cMap the normal way - closing the journal does NOT necessarily
-	// trigger a scene reload; TattooUserInterface::doJournal() simply calls
-	// screen.setPalette(screen._cMap) right after journal.show() returns,
-	// on the assumption that _cMap still holds the room's palette (true
-	// before this fix, since the journal used to load its palette into a
-	// separate local buffer and never touched _cMap). Now that we load the
-	// journal's palette into _cMap to fix the scrambled-journal-colors bug
-	// above, we must save the room's palette here and restore it into
-	// _cMap before returning, or the room keeps using the journal's palette
-	// after the journal closes - which manifests as the room's palette-
-	// cycled animations (candle flicker, shadow shimmer, etc.) blinking
-	// with wrong colors, since those effects rotate specific palette slots
-	// that now hold journal.pal's unrelated entries.
+	// Keep the journal palette in _cMap for setupBGArea, but save the room
+	// palette first. The caller restores the visible room palette from _cMap
+	// when the journal closes; that also preserves room palette-cycle logic.
+	// The hires native-pixel conversion uses the palette installed below,
+	// rather than assuming _cMap is always the currently displayed palette.
 	byte roomPalette[Graphics::PALETTE_SIZE];
 	Common::copy(screen._cMap, screen._cMap + Graphics::PALETTE_SIZE, roomPalette);
 
