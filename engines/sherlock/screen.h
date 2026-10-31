@@ -377,6 +377,7 @@ public:
 	static void translatePalette(byte palette[Graphics::PALETTE_SIZE]);
 
 	int roseTattooHiresScale() const { return _roseTattooHiresScale; }
+	bool roseTattooHiresNativeReference() const;
 
 	/**
 	 * True when Screen::queueRoseTattooHiresText() will actually queue a
@@ -392,7 +393,8 @@ public:
 	 * bleed-through" bug this was introduced to fix once and for all).
 	 */
 	bool usesRoseTattooHiresText() const {
-		return _roseTattooHiresScale > 1 && !_roseTattooHiresFormat.isCLUT8();
+		return _roseTattooHiresScale > 1 && !_roseTattooHiresFormat.isCLUT8() &&
+			!roseTattooHiresNativeReference();
 	}
 
 	bool roseTattooHiresJournalMode() const { return _roseTattooHiresJournalMode; }

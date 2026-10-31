@@ -60,6 +60,8 @@ static int closestPaletteEntry(const byte *palette, byte r, byte g, byte b) {
 }
 
 static bool loadRoseTattooBackgroundOverride(Screen &screen, int sceneNumber) {
+	if (screen.roseTattooHiresNativeReference())
+		return false;
 	const char *overrideDir = getenv("SCUMMVM_SHERLOCK_TATTOO_ASSET_OVERRIDES");
 	if (!overrideDir || !*overrideDir)
 		return false;

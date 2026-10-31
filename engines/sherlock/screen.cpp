@@ -22,6 +22,7 @@
 #define FORBIDDEN_SYMBOL_EXCEPTION_getenv
 
 #include "sherlock/screen.h"
+#include "sherlock/hires_native_reference.h"
 #include "sherlock/hires_resource.h"
 #include "sherlock/hires_sprite.h"
 #include "sherlock/sherlock.h"
@@ -50,7 +51,8 @@ enum RoseTattooHiresDebugMode {
 	kRoseTattooHiresComposite = 0,
 	kRoseTattooHiresBackground,
 	kRoseTattooHiresMask,
-	kRoseTattooHiresNative
+	kRoseTattooHiresNative,
+	kRoseTattooHiresNativeReference
 };
 
 Screen *Screen::init(SherlockEngine *vm) {
@@ -81,6 +83,8 @@ static int roseTattooHiresDebugModeFromEnv() {
 		return kRoseTattooHiresMask;
 	if (!strcmp(mode, "native"))
 		return kRoseTattooHiresNative;
+	if (!strcmp(mode, "native-reference"))
+		return kRoseTattooHiresNativeReference;
 
 	warning("Unknown Rose Tattoo hires debug mode '%s'; using composite", mode);
 	return kRoseTattooHiresComposite;
@@ -163,6 +167,10 @@ Screen::~Screen() {
 #endif
 }
 
+bool Screen::roseTattooHiresNativeReference() const {
+	return _roseTattooHiresScale > 1 && _roseTattooHiresDebugMode == kRoseTattooHiresNativeReference;
+}
+
 void Screen::clearRoseTattooHiresBackground() {
 	_roseTattooHiresBackground.free();
 	_roseTattooHiresComposite.free();
@@ -213,7 +221,7 @@ void Screen::setPalette(const Graphics::Palette &pal, uint start) {
 }
 
 bool Screen::loadRoseTattooHiresBackgroundFromPath(const Common::Path &overridePath) {
-	if (_roseTattooHiresScale <= 1)
+	if (_roseTattooHiresScale <= 1 || roseTattooHiresNativeReference())
 		return false;
 
 	// Missing override files are the expected/normal case (not every scene
@@ -311,7 +319,7 @@ bool Screen::loadRoseTattooHiresMapOverride() {
 
 bool Screen::loadRoseTattooHiresCursorOverride(const Common::String &resourceName, int frameIndex,
 		Graphics::Surface &outSurface) {
-	if (_roseTattooHiresScale <= 1)
+	if (_roseTattooHiresScale <= 1 || roseTattooHiresNativeReference())
 		return false;
 	// Never consume a legacy name-only override for the ambiguous PC images,
 	// including callers which do not obtain their key from an ImageFile.
@@ -443,7 +451,7 @@ Common::Rect Screen::blitRoseTattooHiresSpriteOverride(Graphics::ManagedSurface 
 		const Common::String &resourceName, int frameIndex, const ImageFrame &nativeFrame,
 		const Common::Point &pt, bool horizFlip, int scaleVal, bool trackNativeProvenance, bool opaqueNative,
 		bool worldNativeFallback, const Common::String &cacheDiscriminator) {
-	if (_roseTattooHiresScale <= 1 || _roseTattooHiresFormat.isCLUT8())
+	if (_roseTattooHiresScale <= 1 || _roseTattooHiresFormat.isCLUT8() || roseTattooHiresNativeReference())
 		return Common::Rect();
 
 	const int scale = _roseTattooHiresScale;
@@ -573,6 +581,8 @@ void Screen::queueRoseTattooHiresSceneSprite(const Common::String &resourceName,
 
 void Screen::queueRoseTattooHiresPersonSprite(ImageFile *owner, const Common::String &legacyResource,
 		int frameIndex, const ImageFrame &nativeFrame, const Common::Point &pt, bool horizFlip, int scaleVal) {
+	if (roseTattooHiresNativeReference())
+		return;
 	const char *mode = getenv("SCUMMVM_SHERLOCK_TATTOO_PALETTE_SAFE_SPRITES");
 	if (!IS_ROSE_TATTOO || IS_3DO || !mode || strcmp(mode, "1")) {
 		queueRoseTattooHiresSceneSprite(legacyResource, frameIndex, nativeFrame, pt, horizFlip, scaleVal);
@@ -874,7 +884,7 @@ void Screen::queueRoseTattooHiresText(const Common::String &str, const Common::P
 	// nearest-neighbor fallback, and its bitmap glyphs are suppressed by
 	// Fonts::writeString() when this TTF is available.
 	//
-	if (_roseTattooHiresScale <= 1 || _roseTattooHiresFormat.isCLUT8() || str.empty() ||
+	if (!usesRoseTattooHiresText() || str.empty() ||
 			fontHeightPx <= 0)
 		return;
 
@@ -1058,6 +1068,18 @@ void Screen::update() {
 	const int scale = _roseTattooHiresScale;
 	const int outWidth = SHERLOCK_SCREEN_WIDTH * scale;
 	const int outHeight = SHERLOCK_SCREEN_HEIGHT * scale;
+
+	if (roseTattooHiresNativeReference()) {
+		// Do not replay hires background, scene sprites, text, or widget icons:
+		// the native framebuffer already contains the mask and UI in draw order.
+		// Bitmap text must also remain enabled while producing this frame; some
+		// widgets otherwise suppress it in favor of a separate hires text layer.
+		if (_roseTattooHiresComposite.empty())
+			_roseTattooHiresComposite.create(outWidth, outHeight, _roseTattooHiresFormat);
+		roseTattooNativeReferenceFrame(_roseTattooHiresComposite, *this, _roseTattooPalette, scale);
+		presentRoseTattooHiresFrame(outWidth, outHeight);
+		return;
+	}
 
 	if (_roseTattooHiresBackground.empty()) {
 		// No hires background override is loaded for the current scene (e.g. the
