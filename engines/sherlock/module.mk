@@ -52,6 +52,7 @@ MODULE_OBJS = \
 	fixed_text.o \
 	fonts.o \
 	image_file.o \
+	image_file_stream.o \
 	inventory.o \
 	journal.o \
 	map.o \
@@ -60,6 +61,7 @@ MODULE_OBJS = \
 	objects.o \
 	people.o \
 	resources.o \
+	resources_lz.o \
 	saveload.o \
 	scene.o \
 	screen.o \

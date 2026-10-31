@@ -59,6 +59,7 @@ endif
 
 ifeq ($(ENABLE_SHERLOCK), STATIC_PLUGIN)
 	TESTS += $(srcdir)/test/engines/sherlock/*.h
+	TEST_LIBS := engines/sherlock/image_file_stream.o engines/sherlock/resources_lz.o $(TEST_LIBS)
 endif
 
 #

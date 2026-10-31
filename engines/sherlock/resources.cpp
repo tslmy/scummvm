@@ -356,49 +356,4 @@ Common::SeekableReadStream *Resources::decompressLZ(Common::SeekableReadStream &
 	return new Common::MemoryReadStream(dataOut, outSize, DisposeAfterUse::YES);
 }
 
-void Resources::decompressLZ(Common::SeekableReadStream &source, byte *outBuffer, int32 outSize, int32 inSize) {
-	byte lzWindow[4096];
-	uint16 lzWindowPos;
-	uint16 cmd;
-
-	byte *outBufferEnd = outBuffer + outSize;
-	int endPos = source.pos() + inSize;
-
-	memset(lzWindow, 0xFF, 0xFEE);
-	lzWindowPos = 0xFEE;
-	cmd = 0;
-
-	do {
-		cmd >>= 1;
-		if (!(cmd & 0x100))
-			cmd = source.readByte() | 0xFF00;
-
-		if (cmd & 1) {
-			byte literal = source.readByte();
-			*outBuffer++ = literal;
-			lzWindow[lzWindowPos] = literal;
-			lzWindowPos = (lzWindowPos + 1) & 0x0FFF;
-		} else {
-			int copyPos, copyLen;
-			copyPos = source.readByte();
-			copyLen = source.readByte();
-			copyPos = copyPos | ((copyLen & 0xF0) << 4);
-			copyLen = (copyLen & 0x0F) + 3;
-			while (copyLen-- && (outSize == -1 || outBuffer < outBufferEnd)) {
-				byte literal = lzWindow[copyPos];
-				copyPos = (copyPos + 1) & 0x0FFF;
-				*outBuffer++ = literal;
-				lzWindow[lzWindowPos] = literal;
-				lzWindowPos = (lzWindowPos + 1) & 0x0FFF;
-			}
-		}
-	} while ((outSize == -1 || outBuffer < outBufferEnd) && (inSize == -1 || source.pos() < endPos));
-	if (inSize != -1 && source.pos() < endPos) {
-		source.skip(endPos - source.pos());
-	}
-	if (outSize != -1 && outBuffer < outBufferEnd) {
-		memset(outBuffer, 0, outBufferEnd - outBuffer);
-	}	
-}
-
 } // End of namespace Sherlock
