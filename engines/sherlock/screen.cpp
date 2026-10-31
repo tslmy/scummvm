@@ -22,6 +22,7 @@
 #define FORBIDDEN_SYMBOL_EXCEPTION_getenv
 
 #include "sherlock/screen.h"
+#include "sherlock/hires_background.h"
 #include "sherlock/hires_native_reference.h"
 #include "sherlock/hires_resource.h"
 #include "sherlock/hires_sprite.h"
@@ -1179,15 +1180,8 @@ void Screen::update() {
 		// once, then copy the visible portion of the scrolled background in a
 		// bulk blit instead of doing two nested getPixel/setPixel loops for
 		// every output pixel.
-		_roseTattooHiresComposite.clear(0);
-		Common::Rect source(bgOffsetX, bgOffsetY,
-			bgOffsetX + outWidth, bgOffsetY + outHeight);
-		source.clip(_roseTattooHiresBackground.getBounds());
-		if (!source.isEmpty()) {
-			Common::Rect destination = source;
-			destination.translate(-bgOffsetX, -bgOffsetY);
-			_roseTattooHiresComposite.blitFrom(_roseTattooHiresBackground, source, destination);
-		}
+		copyRoseTattooOpaqueBackground(_roseTattooHiresComposite, _roseTattooHiresBackground,
+			bgOffsetX, bgOffsetY);
 		blendRoseTattooHiresBakedSprites();
 	}
 
