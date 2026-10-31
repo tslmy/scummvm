@@ -80,6 +80,16 @@ inline uint32 hiresSpriteBilinearSample(const Graphics::Surface &source,
 		(green + alpha / 2) / alpha, (blue + alpha / 2) / alpha);
 }
 
+// Keep nearest-sampled interior detail only when doing so cannot change the
+// interpolated coverage. All other samples use the premultiplied result,
+// including a transparent nearest texel next to an opaque one.
+inline uint32 hiresSpriteEdgeSample(const Graphics::PixelFormat &format, uint32 nearest, uint32 bilinear) {
+	assert(format == Graphics::PixelFormat::createFormatRGBA32());
+	const uint32 nearestAlpha = (nearest >> format.aShift) & 255;
+	const uint32 bilinearAlpha = (bilinear >> format.aShift) & 255;
+	return nearestAlpha == 255 && bilinearAlpha == 255 ? nearest : bilinear;
+}
+
 // Straight-alpha source-over into an RGBA layer. Premultiplied arithmetic is
 // used only for the calculation; the result remains straight-alpha RGBA.
 inline uint32 hiresSpriteSourceOver(const Graphics::PixelFormat &format, uint32 source, uint32 destination) {

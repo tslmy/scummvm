@@ -55,6 +55,12 @@ enum RoseTattooHiresDebugMode {
 	kRoseTattooHiresNativeReference
 };
 
+enum RoseTattooHiresSpriteFilter {
+	kRoseTattooHiresSpriteNearest = 0,
+	kRoseTattooHiresSpriteBilinear,
+	kRoseTattooHiresSpriteEdge
+};
+
 Screen *Screen::init(SherlockEngine *vm) {
 	if (vm->getGameID() == GType_RoseTattoo)
 		return new Tattoo::TattooScreen(vm);
@@ -134,7 +140,13 @@ Screen::Screen(SherlockEngine *vm) : BaseSurface(
 	_transitionSeed = 1;
 	_roseTattooHiresScale = vm->getGameID() == GType_RoseTattoo ? roseTattooHiresScaleFromEnv() : 1;
 	const char *spriteFilter = getenv("SCUMMVM_SHERLOCK_TATTOO_SPRITE_FILTER");
-	_roseTattooHiresSpriteBilinear = vm->getGameID() == GType_RoseTattoo && spriteFilter && !strcmp(spriteFilter, "bilinear");
+	_roseTattooHiresSpriteFilter = kRoseTattooHiresSpriteNearest;
+	if (vm->getGameID() == GType_RoseTattoo && spriteFilter) {
+		if (!strcmp(spriteFilter, "bilinear"))
+			_roseTattooHiresSpriteFilter = kRoseTattooHiresSpriteBilinear;
+		else if (!strcmp(spriteFilter, "edge"))
+			_roseTattooHiresSpriteFilter = kRoseTattooHiresSpriteEdge;
+	}
 	_roseTattooHiresJournalMode = false;
 	_roseTattooHiresDebugMode = vm->getGameID() == GType_RoseTattoo ? roseTattooHiresDebugModeFromEnv() : kRoseTattooHiresComposite;
 	_roseTattooHiresFormat = vm->getGameID() == GType_RoseTattoo ? roseTattooHiresFormatFromEnv() : Graphics::PixelFormat::createFormatCLUT8();
@@ -485,7 +497,7 @@ Common::Rect Screen::blitRoseTattooHiresSpriteOverride(Graphics::ManagedSurface 
 	const int x = drawPt.x * scale;
 	const int y = drawPt.y * scale;
 	const int width = nativeW * scale, height = nativeH * scale;
-	const bool filtered = hasOverride && _roseTattooHiresSpriteBilinear &&
+	const bool filtered = hasOverride && _roseTattooHiresSpriteFilter != kRoseTattooHiresSpriteNearest &&
 		(width != overrideSurface->w || height != overrideSurface->h);
 	const bool flipOverride = horizFlip && !opaqueNative;
 	const int filterStartX = MAX(0, -x);
@@ -523,6 +535,8 @@ Common::Rect Screen::blitRoseTattooHiresSpriteOverride(Graphics::ManagedSurface 
 				const int sourceX = hiresSpriteNearestSample(sx, overrideSurface->w, width, flipOverride);
 				nearestPixel = overrideSurface->getPixel(sourceX, sy * overrideSurface->h / height);
 				pixel = filtered ? hiresSpriteBilinearSample(*overrideSurface, filterX[sx - filterStartX], filterY) : nearestPixel;
+				if (filtered && _roseTattooHiresSpriteFilter == kRoseTattooHiresSpriteEdge)
+					pixel = hiresSpriteEdgeSample(overrideSurface->format, nearestPixel, pixel);
 			} else {
 				pixel = _roseTattooPalette.color(layer.format, index,
 					opaqueNative || index != TRANSPARENCY ? 255 : 0);

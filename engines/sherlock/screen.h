@@ -80,7 +80,7 @@ private:
 	int _fadeBytesRead, _fadeBytesToRead;
 	int _oldFadePercent;
 	int _roseTattooHiresScale;
-	bool _roseTattooHiresSpriteBilinear;
+	int _roseTattooHiresSpriteFilter;
 	bool _roseTattooHiresJournalMode;
 	int _roseTattooHiresDebugMode;
 	Graphics::PixelFormat _roseTattooHiresFormat;

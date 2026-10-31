@@ -11,6 +11,16 @@ private:
 			Sherlock::hiresSpriteFilterAxis(y, source.h, height, false));
 	}
 
+	uint32 nearest(const Graphics::Surface &source, int x, int y, int width, int height, bool flipped = false) {
+		return source.getPixel(Sherlock::hiresSpriteNearestSample(x, source.w, width, flipped),
+			Sherlock::hiresSpriteNearestSample(y, source.h, height, false));
+	}
+
+	uint32 edgeSample(const Graphics::Surface &source, int x, int y, int width, int height, bool flipped = false) {
+		return Sherlock::hiresSpriteEdgeSample(source.format, nearest(source, x, y, width, height, flipped),
+			sample(source, x, y, width, height, flipped));
+	}
+
 	void assertARGB(const Graphics::PixelFormat &format, uint32 pixel, byte expectedA, byte expectedR,
 			byte expectedG, byte expectedB) {
 		byte a, r, g, b;
@@ -22,6 +32,127 @@ private:
 	}
 
 public:
+	void testEdgeKeepsOpaqueInteriorAndFiltersAlphaBoundaries() {
+		Graphics::Surface source;
+		const Graphics::PixelFormat fmt = Graphics::PixelFormat::createFormatRGBA32();
+		source.create(2, 1, fmt);
+		source.setPixel(0, 0, fmt.ARGBToColor(255, 255, 0, 0));
+		source.setPixel(1, 0, fmt.ARGBToColor(255, 0, 0, 255));
+		TS_ASSERT_EQUALS(edgeSample(source, 1, 0, 4, 1), source.getPixel(0, 0));
+		TS_ASSERT_DIFFERS(edgeSample(source, 1, 0, 4, 1), sample(source, 1, 0, 4, 1));
+		TS_ASSERT_EQUALS(edgeSample(source, 1, 0, 4, 1, true), source.getPixel(1, 0));
+
+		// Hidden cyan RGB must not leak into interpolated red, whether the
+		// nearest texel is opaque or transparent.
+		source.setPixel(1, 0, fmt.ARGBToColor(0, 0, 255, 255));
+		assertARGB(fmt, edgeSample(source, 1, 0, 4, 1), 191, 255, 0, 0);
+		assertARGB(fmt, edgeSample(source, 2, 0, 4, 1), 64, 255, 0, 0);
+		assertARGB(fmt, Sherlock::hiresSpriteSourceOver(fmt, edgeSample(source, 0, 0, 1, 1),
+			fmt.ARGBToColor(255, 0, 0, 255)), 255, 128, 0, 127);
+		TS_ASSERT_EQUALS(edgeSample(source, 1, 0, 4, 1), sample(source, 1, 0, 4, 1));
+		TS_ASSERT_EQUALS(edgeSample(source, 2, 0, 4, 1), sample(source, 2, 0, 4, 1));
+		source.setPixel(1, 0, fmt.ARGBToColor(128, 0, 0, 255));
+		TS_ASSERT_EQUALS(edgeSample(source, 1, 0, 4, 1), sample(source, 1, 0, 4, 1));
+		TS_ASSERT_EQUALS(edgeSample(source, 2, 0, 4, 1), sample(source, 2, 0, 4, 1));
+		source.free();
+	}
+
+	void testEdgeChecksBothNearestAndInterpolatedAlpha() {
+		Graphics::Surface source;
+		const Graphics::PixelFormat fmt = Graphics::PixelFormat::createFormatRGBA32();
+		source.create(3, 1, fmt);
+		source.setPixel(0, 0, fmt.ARGBToColor(0, 1, 2, 3));
+		source.setPixel(1, 0, fmt.ARGBToColor(255, 20, 40, 60));
+		source.setPixel(2, 0, fmt.ARGBToColor(0, 4, 5, 6));
+		// At this reduction nearest is transparent, but the center-aligned
+		// bilinear sample is fully opaque. It must remain bilinear.
+		TS_ASSERT_EQUALS(edgeSample(source, 0, 0, 1, 1), source.getPixel(1, 0));
+		source.setPixel(0, 0, fmt.ARGBToColor(255, 1, 2, 3));
+		source.setPixel(1, 0, fmt.ARGBToColor(0, 20, 40, 60));
+		TS_ASSERT_EQUALS(edgeSample(source, 0, 0, 1, 1), source.getPixel(1, 0));
+		source.free();
+	}
+
+	void testEdgeOneToOneExactWithFlip() {
+		Graphics::Surface source;
+		const Graphics::PixelFormat fmt = Graphics::PixelFormat::createFormatRGBA32();
+		source.create(5, 3, fmt);
+		for (int y = 0; y < source.h; ++y)
+			for (int x = 0; x < source.w; ++x)
+				source.setPixel(x, y, fmt.ARGBToColor((x + y) % 3 == 0 ? 0 : (x * 49 + y * 5), x * 40, y * 60, x + y));
+		for (int y = 0; y < source.h; ++y)
+			for (int x = 0; x < source.w; ++x) {
+				TS_ASSERT_EQUALS(edgeSample(source, x, y, source.w, source.h), source.getPixel(x, y));
+				TS_ASSERT_EQUALS(edgeSample(source, x, y, source.w, source.h, true), source.getPixel(source.w - 1 - x, y));
+			}
+		source.free();
+	}
+
+	void testEdgeAcrossDimensionsFlipsAndOverlappingLayers() {
+		Graphics::Surface source;
+		const Graphics::PixelFormat fmt = Graphics::PixelFormat::createFormatRGBA32();
+		const uint32 background = fmt.ARGBToColor(160, 10, 100, 200);
+		source.create(7, 3, fmt);
+		for (int y = 0; y < source.h; ++y)
+			for (int x = 0; x < source.w; ++x)
+				source.setPixel(x, y, fmt.ARGBToColor(x % 3 == 0 ? 0 : (x % 3 == 1 ? 128 : 255), x * 30, y * 70, x * y * 10));
+		for (int width = 1; width <= 12; ++width) {
+			for (int height = 1; height <= 8; ++height) {
+				for (int flip = 0; flip < 2; ++flip) {
+					for (int y = 0; y < height; ++y) {
+						for (int x = 0; x < width; ++x) {
+							const uint32 n = nearest(source, x, y, width, height, flip);
+							const uint32 b = sample(source, x, y, width, height, flip);
+							const uint32 e = edgeSample(source, x, y, width, height, flip);
+							byte na, nr, ng, nb, ba, br, bg, bb, ea, er, eg, eb;
+							fmt.colorToARGB(n, na, nr, ng, nb);
+							fmt.colorToARGB(b, ba, br, bg, bb);
+							fmt.colorToARGB(e, ea, er, eg, eb);
+							TS_ASSERT_EQUALS(ea, ba);
+							const uint32 expected = na == 255 && ba == 255 ? n : b;
+							TS_ASSERT_EQUALS(e, expected);
+							TS_ASSERT_EQUALS(Sherlock::hiresSpriteSourceOver(fmt, e, background),
+								Sherlock::hiresSpriteSourceOver(fmt, expected, background));
+						}
+					}
+				}
+			}
+		}
+		source.free();
+	}
+
+	void testEdgeClippingUsesOriginalDrawCoordinates() {
+		Graphics::Surface source;
+		const Graphics::PixelFormat fmt = Graphics::PixelFormat::createFormatRGBA32();
+		source.create(5, 4, fmt);
+		for (int y = 0; y < source.h; ++y)
+			for (int x = 0; x < source.w; ++x)
+				source.setPixel(x, y, fmt.ARGBToColor(31 * (x + y), x * 40, y * 50, 5));
+		const int width = 9, height = 7, viewportW = 6, viewportH = 5;
+		for (int flip = 0; flip < 2; ++flip) {
+			for (int left = -width; left <= viewportW; left += 3) {
+				for (int top = -height; top <= viewportH; top += 2) {
+					Graphics::ManagedSurface viewport(viewportW, viewportH, fmt);
+					viewport.clear(0);
+					for (int sy = 0; sy < height; ++sy)
+						for (int sx = 0; sx < width; ++sx) {
+							const int dx = left + sx, dy = top + sy;
+							if (dx >= 0 && dx < viewportW && dy >= 0 && dy < viewportH)
+								viewport.setPixel(dx, dy, edgeSample(source, sx, sy, width, height, flip));
+						}
+					for (int dy = 0; dy < viewportH; ++dy)
+						for (int dx = 0; dx < viewportW; ++dx) {
+							const int sx = dx - left, sy = dy - top;
+							const uint32 expected = sx >= 0 && sx < width && sy >= 0 && sy < height ?
+								edgeSample(source, sx, sy, width, height, flip) : 0;
+							TS_ASSERT_EQUALS(viewport.getPixel(dx, dy), expected);
+						}
+				}
+			}
+		}
+		source.free();
+	}
+
 	void testBilinearOneToOneExactIncludingTransparentPixelsAndFlip() {
 		Graphics::Surface source;
 		const Graphics::PixelFormat fmt = Graphics::PixelFormat::createFormatRGBA32();
