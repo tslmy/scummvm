@@ -478,7 +478,9 @@ bool Scene::loadScene(const Common::Path &filename) {
 				// blended into every frame of the new scene as a permanent
 				// ghost. Wipe the whole hires text layer on every scene load
 				// so it always starts blank.
+#ifdef USE_FREETYPE2
 				screen.clearRoseTattooHiresTextLayer();
+#endif
 			}
 
 			// Read in the shapes header info
