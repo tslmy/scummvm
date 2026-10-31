@@ -232,6 +232,19 @@ bool Events::isCursorVisible() const {
 	return CursorMan.isVisible();
 }
 
+void Events::recordMouseButton(int button, bool down, const Common::Point &position) {
+	if (IS_ROSE_TATTOO && !IS_3DO) {
+		const Common::Point nativePosition = roseTattooMousePosition(position, _vm->_isScreenDoubled,
+			_vm->_screen->roseTattooHiresScale());
+		_roseTattooMouseInput.record(button, down, nativePosition);
+		_mouseButtons = _roseTattooMouseInput.physical();
+	} else if (down) {
+		_mouseButtons |= button;
+	} else {
+		_mouseButtons &= ~button;
+	}
+}
+
 void Events::pollEvents() {
 	checkForNextFrameCounter();
 
@@ -254,16 +267,16 @@ void Events::pollEvents() {
 		case Common::EVENT_KEYUP:
 			return;
 		case Common::EVENT_LBUTTONDOWN:
-			_mouseButtons |= LEFT_BUTTON;
+			recordMouseButton(LEFT_BUTTON, true, event.mouse);
 			return;
 		case Common::EVENT_RBUTTONDOWN:
-			_mouseButtons |= RIGHT_BUTTON;
+			recordMouseButton(RIGHT_BUTTON, true, event.mouse);
 			return;
 		case Common::EVENT_LBUTTONUP:
-			_mouseButtons &= ~LEFT_BUTTON;
+			recordMouseButton(LEFT_BUTTON, false, event.mouse);
 			return;
 		case Common::EVENT_RBUTTONUP:
-			_mouseButtons &= ~RIGHT_BUTTON;
+			recordMouseButton(RIGHT_BUTTON, false, event.mouse);
 			return;
 		default:
  			break;
@@ -354,6 +367,7 @@ void Events::clearEvents() {
 	_pendingKeys.clear();
 	_pendingActions.clear();
 	_mouseButtons = 0;
+	_roseTattooMouseInput.clear();
 	_pressed = _released = false;
 	_rightPressed = _rightReleased = false;
 	_oldButtons = _oldRightButton = false;
@@ -404,21 +418,28 @@ bool Events::delay(uint32 time, bool interruptable) {
 }
 
 void Events::setButtonState() {
-	_firstPress = ((_mouseButtons & 1) && !_pressed) || ((_mouseButtons & 2) && !_rightPressed);
+	int buttons = _mouseButtons;
+	if (IS_ROSE_TATTOO && !IS_3DO) {
+		Common::Point position;
+		if (_roseTattooMouseInput.consume(position))
+			_mousePos = position;
+		buttons = _roseTattooMouseInput.delivered();
+	}
+	_firstPress = ((buttons & 1) && !_pressed) || ((buttons & 2) && !_rightPressed);
 
 	_released = _rightReleased = false;
-	if (_mouseButtons & LEFT_BUTTON)
+	if (buttons & LEFT_BUTTON)
 		_pressed = _oldButtons = true;
 
-	if ((_mouseButtons & LEFT_BUTTON) == 0 && _oldButtons) {
+	if ((buttons & LEFT_BUTTON) == 0 && _oldButtons) {
 		_pressed = _oldButtons = false;
 		_released = true;
 	}
 
-	if (_mouseButtons & RIGHT_BUTTON)
+	if (buttons & RIGHT_BUTTON)
 		_rightPressed = _oldRightButton = true;
 
-	if ((_mouseButtons & RIGHT_BUTTON) == 0 && _oldRightButton) {
+	if ((buttons & RIGHT_BUTTON) == 0 && _oldRightButton) {
 		_rightPressed = _oldRightButton = false;
 		_rightReleased = true;
 	}

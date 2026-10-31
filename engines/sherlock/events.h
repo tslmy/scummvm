@@ -26,6 +26,7 @@
 #include "common/events.h"
 #include "common/queue.h"
 #include "sherlock/image_file.h"
+#include "sherlock/rose_mouse_input.h"
 
 namespace Sherlock {
 
@@ -43,6 +44,7 @@ private:
 	uint32 _priorFrameTime;
 	ImageFile *_cursorImages;
 	int _mouseButtons;
+	RoseTattooMouseInput _roseTattooMouseInput;
 	Common::Point _mousePos;
 	int _waitCounter;
 	uint _frameRate;
@@ -51,6 +53,7 @@ private:
 	 * Check whether it's time to display the next screen frame
 	 */
 	bool checkForNextFrameCounter();
+	void recordMouseButton(int button, bool down, const Common::Point &position);
 public:
 	CursorId _cursorId;
 	bool _pressed;
