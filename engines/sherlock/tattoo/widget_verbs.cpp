@@ -323,6 +323,21 @@ void WidgetVerbs::highlightVerbControls() {
 	}
 }
 
+bool WidgetVerbs::verbPosition(const Common::String &verb, Common::Point &pt) const {
+	if (!active())
+		return false;
+	const int rowHeight = _vm->_screen->fontHeight() + 7;
+	Common::Rect bounds = _bounds;
+	bounds.grow(-3);
+	for (uint idx = 0; idx < _verbCommands.size(); ++idx) {
+		if (!_verbCommands[idx].equalsIgnoreCase(verb))
+			continue;
+		pt = Common::Point(bounds.left + bounds.width() / 2, bounds.top + rowHeight * idx + rowHeight / 2);
+		return bounds.contains(pt);
+	}
+	return false;
+}
+
 } // End of namespace Tattoo
 
 } // End of namespace Sherlock

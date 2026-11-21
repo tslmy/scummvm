@@ -113,6 +113,9 @@ public:
 public:
 	TattooScene(SherlockEngine *vm);
 
+	/** Number of the playing canimation, or -1 if none is active */
+	int activeCAnimNumber() const { return _activeCAnim.active() ? _activeCAnimNumber : -1; }
+
 	/**
 	 * Returns the scale value for the passed co-ordinates. This is taken from the scene's
 	 * scale zones, interpolating inbetween the top and bottom values of the zones as needed

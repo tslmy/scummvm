@@ -379,6 +379,8 @@ public:
 	static void translatePalette(byte palette[Graphics::PALETTE_SIZE]);
 
 	int roseTattooHiresScale() const { return _roseTattooHiresScale; }
+	/** The last presented hires frame (without the backend-drawn cursor). */
+	const Graphics::ManagedSurface &roseTattooHiresComposite() const { return _roseTattooHiresComposite; }
 	bool roseTattooHiresNativeReference() const;
 	void selectRoseTattooHazeFallbackScene(int scene);
 	bool roseTattooHazeFallbackTouchesScene(int scene) const { return _roseTattooHazeFallback.touches(scene); }

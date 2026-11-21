@@ -37,6 +37,10 @@ enum CursorId { ARROW = 0, MAGNIFY = 1, WAIT = 2, EXIT_ZONES_START = 5, INVALID_
 
 class SherlockEngine;
 
+namespace Tattoo {
+class Playtest;
+}
+
 class Events {
 private:
 	SherlockEngine *_vm;
@@ -48,6 +52,8 @@ private:
 	Common::Point _mousePos;
 	int _waitCounter;
 	uint _frameRate;
+	Tattoo::Playtest *_playtest;
+	bool _playtestChecked;
 
 	/**
 	 * Check whether it's time to display the next screen frame

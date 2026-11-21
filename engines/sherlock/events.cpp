@@ -29,6 +29,7 @@
 #include "sherlock/rose_frame_pacing.h"
 #include "sherlock/surface.h"
 #include "sherlock/tattoo/tattoo.h"
+#include "sherlock/tattoo/tattoo_playtest.h"
 #include "sherlock/tattoo/tattoo_scene.h"
 
 namespace Sherlock {
@@ -47,12 +48,15 @@ Events::Events(SherlockEngine *vm): _vm(vm) {
 	_firstPress = false;
 	_waitCounter = 0;
 	_frameRate = GAME_FRAME_RATE;
+	_playtest = nullptr;
+	_playtestChecked = false;
 
 	if (_vm->_interactiveFl)
 		loadCursors("rmouse.vgs");
 }
 
 Events::~Events() {
+	delete _playtest;
 	delete _cursorImages;
 }
 
@@ -249,6 +253,15 @@ void Events::recordMouseButton(int button, bool down, const Common::Point &posit
 
 void Events::pollEvents() {
 	checkForNextFrameCounter();
+
+	// Scripted play-test input (SCUMMVM_SHERLOCK_TATTOO_INPUT_SCRIPT) is pushed
+	// into the event manager here, so it is dispatched like real input below.
+	if (!_playtestChecked && IS_ROSE_TATTOO) {
+		_playtestChecked = true;
+		_playtest = Tattoo::Playtest::create(_vm);
+	}
+	if (_playtest)
+		_playtest->update();
 
 	Common::Event event;
 	while (g_system->getEventManager()->pollEvent(event)) {

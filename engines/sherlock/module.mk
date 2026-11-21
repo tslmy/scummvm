@@ -29,6 +29,7 @@ MODULE_OBJS = \
 	tattoo/mask_trace.o \
 	tattoo/tattoo_map.o \
 	tattoo/tattoo_people.o \
+	tattoo/tattoo_playtest.o \
 	tattoo/tattoo_resources.o \
 	tattoo/tattoo_scene.o \
 	tattoo/tattoo_screen.o \

@@ -62,6 +62,12 @@ public:
 	 * Process input for the dialog
 	 */
 	void handleEvents() override;
+
+	/**
+	 * Scene-space point in the middle of the named verb's row, for scripted
+	 * input. Returns false if the menu is not open or has no such verb.
+	 */
+	bool verbPosition(const Common::String &verb, Common::Point &pt) const;
 };
 
 } // End of namespace Tattoo
