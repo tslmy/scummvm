@@ -75,6 +75,7 @@ public:
 	Common::StringArray _savegames;
 	int _savegameIndex;
 	bool _justLoaded;
+	bool _postLoadJump; // debug post-load scene jump entered as a normal room change
 public:
 	static SaveManager *init(SherlockEngine *vm, const Common::String &target);
 	SaveManager(SherlockEngine *vm, const Common::String &target);

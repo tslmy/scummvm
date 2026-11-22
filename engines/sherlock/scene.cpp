@@ -1175,7 +1175,7 @@ bool Scene::loadScene(const Common::Path &filename) {
 	// naturally reachable or that later gameplay works.
 	const char *smoke = getenv("SCUMMVM_SHERLOCK_TATTOO_SCENE_SMOKE");
 	const char *requested = getenv("SCUMMVM_SHERLOCK_TATTOO_POSTLOAD_SCENE");
-	if (IS_ROSE_TATTOO && flag && saves._justLoaded && smoke && !strcmp(smoke, "1") && requested &&
+	if (IS_ROSE_TATTOO && flag && (saves._justLoaded || saves._postLoadJump) && smoke && !strcmp(smoke, "1") && requested &&
 			_goToScene == -1 && atoi(requested) == _currentScene) {
 		printf("SHERLOCK_SCENE_SMOKE_RENDERED %d\n", _currentScene);
 		fflush(stdout);
@@ -1184,6 +1184,7 @@ bool Scene::loadScene(const Common::Path &filename) {
 	// Player has not yet walked in this scene
 	_walkedInScene = false;
 	saves._justLoaded = false;
+	saves._postLoadJump = false;
 
 	events.clearEvents();
 	return flag;

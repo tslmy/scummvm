@@ -141,8 +141,20 @@ Common::Error SherlockEngine::run() {
 		const char *postLoadScene = getenv("SCUMMVM_SHERLOCK_TATTOO_POSTLOAD_SCENE");
 		if (postLoadScene && *postLoadScene) {
 			int sceneNumber = atoi(postLoadScene);
-			if (sceneNumber > 0)
+			if (sceneNumber > 0) {
 				_scene->_goToScene = sceneNumber;
+				// Opt-in: enter the jumped-to room like a normal room change
+				// (default entrance, People::reset, PATHnnA setup script,
+				// TALK_EVERY/TURNON/TURNOFF toggles) instead of as "restore
+				// the saved room". The save's flags and inventory are kept.
+				const char *setup = getenv("SCUMMVM_SHERLOCK_TATTOO_POSTLOAD_SETUP");
+				if (getGameID() == GType_RoseTattoo && setup && !strcmp(setup, "1")) {
+					_saves->_justLoaded = false;
+					_saves->_postLoadJump = true;
+					_people->_savedPos = Point32(-1, -1);
+					_people->_savedPos._facing = -1;
+				}
+			}
 		}
 	} else {
 		do {
