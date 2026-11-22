@@ -319,6 +319,7 @@ bool Screen::loadRoseTattooHiresBackgroundFromPath(const Common::Path &overrideP
 bool Screen::loadRoseTattooHiresBackgroundOverride(int sceneNumber) {
 	clearRoseTattooHiresBackground();
 	clearRoseTattooHiresSpriteCache();
+	loadRoseTattooHiresRoomGrade(sceneNumber);
 
 	if (_roseTattooHiresScale <= 1)
 		return false;
@@ -351,7 +352,7 @@ bool Screen::loadRoseTattooHiresMapOverride() {
 }
 
 bool Screen::loadRoseTattooHiresCursorOverride(const Common::String &resourceName, int frameIndex,
-		Graphics::Surface &outSurface) {
+		Graphics::Surface &outSurface, int *assetScale) {
 	if (_roseTattooHiresScale <= 1 || _roseTattooHiresDebugMode == kRoseTattooHiresNativeReference)
 		return false;
 	// Never consume a legacy name-only override for the ambiguous PC images,
@@ -363,15 +364,36 @@ bool Screen::loadRoseTattooHiresCursorOverride(const Common::String &resourceNam
 	if (!overrideDir || !*overrideDir)
 		return false;
 
-	Common::Path overridePath(Common::String::format(
-		"%s/sprites/%s/frame_%03d@%dx.png", overrideDir, resourceName.c_str(), frameIndex,
-		_roseTattooHiresScale), '/');
-	// Same rationale as loadRoseTattooHiresBackgroundFromPath() above: most
-	// sprite frames don't have an override, so check existence first to
-	// avoid File::open()'s "node does not exist!" warning spam.
-	Common::FSNode overrideNode(overridePath);
-	if (!overrideNode.exists())
+	// Mixed-scale packs (sidecar format v1): the output scale first; callers
+	// that can resample (assetScale given) then accept the largest file below
+	// it, else the smallest above it.
+	int candidates[8];
+	int numCandidates = 0;
+	candidates[numCandidates++] = _roseTattooHiresScale;
+	if (assetScale) {
+		for (int sc = _roseTattooHiresScale - 1; sc >= 1; --sc)
+			candidates[numCandidates++] = sc;
+		for (int sc = _roseTattooHiresScale + 1; sc <= 4 && numCandidates < 8; ++sc)
+			candidates[numCandidates++] = sc;
+	}
+	Common::Path overridePath;
+	Common::FSNode overrideNode;
+	int foundScale = 0;
+	for (int i = 0; i < numCandidates && !foundScale; ++i) {
+		overridePath = Common::Path(Common::String::format(
+			"%s/sprites/%s/frame_%03d@%dx.png", overrideDir, resourceName.c_str(), frameIndex,
+			candidates[i]), '/');
+		// Same rationale as loadRoseTattooHiresBackgroundFromPath() above: most
+		// sprite frames don't have an override, so check existence first to
+		// avoid File::open()'s "node does not exist!" warning spam.
+		overrideNode = Common::FSNode(overridePath);
+		if (overrideNode.exists())
+			foundScale = candidates[i];
+	}
+	if (!foundScale)
 		return false;
+	if (assetScale)
+		*assetScale = foundScale;
 
 	Common::File file;
 	if (!file.open(overrideNode))
@@ -431,32 +453,149 @@ void Screen::clearRoseTattooHiresSpriteCache() {
 	_roseTattooHiresSpriteCacheBytes = _roseTattooHiresSpriteCacheClock = 0;
 }
 
+const HiresResourceSidecar &Screen::getRoseTattooHiresSidecar(const Common::String &resourceName) {
+	Common::HashMap<Common::String, HiresResourceSidecar, Common::IgnoreCase_Hash, Common::IgnoreCase_EqualTo>::const_iterator it =
+		_roseTattooHiresSidecars.find(resourceName);
+	if (it != _roseTattooHiresSidecars.end())
+		return it->_value;
+
+	HiresResourceSidecar sidecar;
+	const char *overrideDir = getenv("SCUMMVM_SHERLOCK_TATTOO_ASSET_OVERRIDES");
+	if (overrideDir && *overrideDir && !resourceName.empty()) {
+		const Common::Path path(Common::String::format("%s/sprites/%s/frames.json", overrideDir,
+			resourceName.c_str()), '/');
+		const Common::FSNode node(path);
+		Common::File file;
+		if (node.exists() && file.open(node)) {
+			const Common::String json = file.readString(0, file.size());
+			Common::String error;
+			if (!parseHiresFramesSidecar(json, sidecar, error))
+				warning("Ignoring Rose Tattoo sidecar %s: %s", path.toString('/').c_str(), error.c_str());
+		}
+	}
+	_roseTattooHiresSidecars[resourceName] = sidecar;
+	return _roseTattooHiresSidecars[resourceName];
+}
+
+void Screen::loadRoseTattooHiresRoomGrade(int sceneNumber) {
+	_roseTattooHiresRoomGrade = HiresRoomGrade();
+	const char *overrideDir = getenv("SCUMMVM_SHERLOCK_TATTOO_ASSET_OVERRIDES");
+	if (!overrideDir || !*overrideDir || sceneNumber <= 0)
+		return;
+	const Common::String sceneDir = Common::String::format("%s/scene_%03d", overrideDir, sceneNumber);
+	const Common::Path path(sceneDir + "/grade.json", '/');
+	const Common::FSNode node(path);
+	Common::File file;
+	if (!node.exists() || !file.open(node))
+		return;
+	const Common::String json = file.readString(0, file.size());
+	Common::String error;
+	HiresRoomGrade grade;
+	if (!parseHiresGradeSidecar(json, grade, error)) {
+		warning("Ignoring Rose Tattoo grade %s: %s", path.toString('/').c_str(), error.c_str());
+		return;
+	}
+	// Load the LUT images; a missing or malformed LUT voids the whole sidecar.
+	HiresGradeEntry *entries[64];
+	int numEntries = 0;
+	if (grade.hasWildcard)
+		entries[numEntries++] = &grade.wildcard;
+	for (Common::HashMap<Common::String, HiresGradeEntry, Common::IgnoreCase_Hash, Common::IgnoreCase_EqualTo>::iterator it =
+			grade.byResource.begin(); it != grade.byResource.end() && numEntries < 64; ++it)
+		entries[numEntries++] = &it->_value;
+	for (int i = 0; i < numEntries; ++i) {
+		if (entries[i]->lutName.empty())
+			continue;
+		const Common::Path lutPath(sceneDir + "/" + entries[i]->lutName, '/');
+		const Common::FSNode lutNode(lutPath);
+		Common::File lutFile;
+		Image::PNGDecoder decoder;
+		const Graphics::Surface *surface = nullptr;
+		if (lutNode.exists() && lutFile.open(lutNode) && decoder.loadStream(lutFile))
+			surface = decoder.getSurface();
+		Common::Array<uint32> pixels;
+		if (surface && surface->w == 256 && surface->h == 16) {
+			const Graphics::Palette &pal = decoder.getPalette();
+			pixels.resize(256 * 16);
+			for (int y = 0; y < 16; ++y) {
+				for (int x = 0; x < 256; ++x) {
+					const uint32 c = surface->getPixel(x, y);
+					byte r, g, b;
+					if (surface->format.bytesPerPixel == 1 && c < pal.size()) {
+						r = pal.data()[c * 3];
+						g = pal.data()[c * 3 + 1];
+						b = pal.data()[c * 3 + 2];
+					} else {
+						surface->format.colorToRGB(c, r, g, b);
+					}
+					pixels[y * 256 + x] = (r << 16) | (g << 8) | b;
+				}
+			}
+		}
+		if (!hiresGradeLutFromPixels(pixels, surface ? surface->w : 0, surface ? surface->h : 0, entries[i]->lut)) {
+			warning("Ignoring Rose Tattoo grade %s: bad LUT %s", path.toString('/').c_str(), entries[i]->lutName.c_str());
+			return;
+		}
+	}
+	_roseTattooHiresRoomGrade = grade;
+}
+
 const Graphics::Surface *Screen::getRoseTattooHiresSprite(const Common::String &resourceName, int frameIndex,
-		int expectedWidth, int expectedHeight, const Common::String &cacheDiscriminator) {
+		int nativeWidth, int nativeHeight, const Common::String &cacheDiscriminator,
+		int *assetScaleOut, HiresFrameGeometry *geometryOut) {
 	if (resourceName.empty() || frameIndex < 0)
 		return nullptr;
-	const Common::String key = roseTattooHiresSpriteCacheKey(resourceName, frameIndex, expectedWidth,
-		expectedHeight, cacheDiscriminator);
+	const Common::String key = roseTattooHiresSpriteCacheKey(resourceName, frameIndex, nativeWidth,
+		nativeHeight, cacheDiscriminator);
 	for (uint i = 0; i < _roseTattooHiresSpriteCache.size(); ++i) {
 		HiresSpriteCacheEntry &entry = _roseTattooHiresSpriteCache[i];
 		if (entry.key == key) {
 			entry.lastUsed = ++_roseTattooHiresSpriteCacheClock;
+			if (assetScaleOut)
+				*assetScaleOut = entry.assetScale;
+			if (geometryOut)
+				*geometryOut = entry.geometry;
 			return entry.surface;
 		}
 	}
 
+	HiresFrameGeometry geometry = getRoseTattooHiresSidecar(resourceName).get(frameIndex);
+	int assetScale = _roseTattooHiresScale;
 	Graphics::Surface *surface = new Graphics::Surface();
-	if (!loadRoseTattooHiresCursorOverride(resourceName, frameIndex, *surface)) {
+	if (!loadRoseTattooHiresCursorOverride(resourceName, frameIndex, *surface, &assetScale)) {
 		delete surface;
 		surface = nullptr;
-	} else if (!roseTattooHiresSpriteDimensionsMatch(surface->w, surface->h, expectedWidth, expectedHeight)) {
+	} else if (geometry.hasEntry ? !hiresSidecarExtentOk(surface->w, surface->h, assetScale, nativeWidth, nativeHeight) :
+			!roseTattooHiresSpriteDimensionsMatch(surface->w, surface->h, nativeWidth * assetScale, nativeHeight * assetScale)) {
 		warning("Ignoring Rose Tattoo hires sprite %s frame %d: unexpected dimensions", resourceName.c_str(), frameIndex);
 		surface->free();
 		delete surface;
 		surface = nullptr;
 	}
+	if (surface && geometry.graded) {
+		// Neutral master: bake the current room's grade (the cache is cleared
+		// on every room change, so the key needs no grade discriminator).
+		if (const HiresGradeEntry *grade = _roseTattooHiresRoomGrade.find(resourceName)) {
+			for (int y = 0; y < surface->h; ++y) {
+				for (int x = 0; x < surface->w; ++x) {
+					byte a, r, g, b;
+					surface->format.colorToARGB(surface->getPixel(x, y), a, r, g, b);
+					if (!a)
+						continue;
+					grade->apply(r, g, b);
+					surface->setPixel(x, y, surface->format.ARGBToColor(a, r, g, b));
+				}
+			}
+		}
+	}
+	if (!surface)
+		geometry = HiresFrameGeometry();
+	if (assetScaleOut)
+		*assetScaleOut = assetScale;
+	if (geometryOut)
+		*geometryOut = geometry;
 	HiresSpriteCacheEntry entry = { key, surface, ++_roseTattooHiresSpriteCacheClock,
-		surface ? (uint32)(surface->pitch * surface->h) : 0 };
+		surface ? (uint32)(surface->pitch * surface->h) : 0, assetScale, geometry };
 	_roseTattooHiresSpriteCache.push_back(entry);
 	_roseTattooHiresSpriteCacheBytes += entry.bytes;
 
@@ -495,8 +634,10 @@ Common::Rect Screen::blitRoseTattooHiresSpriteOverride(Graphics::ManagedSurface 
 	if (srcW <= 0 || srcH <= 0 || nativeW <= 0 || nativeH <= 0)
 		return Common::Rect();
 
+	int assetScale = scale;
+	HiresFrameGeometry geometry;
 	const Graphics::Surface *overrideSurface = getRoseTattooHiresSprite(resourceName, frameIndex,
-		srcW * scale, srcH * scale, cacheDiscriminator);
+		srcW, srcH, cacheDiscriminator, &assetScale, &geometry);
 	const bool hasOverride = overrideSurface != nullptr;
 	// UI has its native draw already; the scene needs a replay even for a
 	// missing override so that native sprites keep their exact z-order.
@@ -535,6 +676,10 @@ Common::Rect Screen::blitRoseTattooHiresSpriteOverride(Graphics::ManagedSurface 
 		_roseTattooHiresSceneSpriteExpectedValid.clear();
 		_roseTattooHiresSceneSpriteExpectedValid.resize(provenanceSize, 0);
 	}
+
+	if (hasOverride && geometry.hasEntry && !opaqueNative)
+		return blitRoseTattooHiresSidecarSprite(layer, *overrideSurface, assetScale, geometry, nativeFrame,
+			Common::Rect(x, y, x + width, y + height), nativeW, nativeH, horizFlip, trackNativeProvenance);
 
 	for (int sy = 0; sy < height; ++sy) {
 		const int dy = y + sy;
@@ -585,6 +730,90 @@ Common::Rect Screen::blitRoseTattooHiresSpriteOverride(Graphics::ManagedSurface 
 	return Common::Rect(x, y, x + width, y + height);
 }
 
+Common::Rect Screen::blitRoseTattooHiresSidecarSprite(Graphics::ManagedSurface &layer,
+		const Graphics::Surface &overrideSurface, int assetScale, const HiresFrameGeometry &geometry,
+		const ImageFrame &nativeFrame, const Common::Rect &nativeRect, int nativeW, int nativeH, bool horizFlip,
+		bool trackNativeProvenance) {
+	// Sidecar format v1: the override sits at `origin` (native px, relative to
+	// the native frame's top-left; mirrored on a flipped draw) and is scaled
+	// like the native frame (scale factor nativeW / srcW for scaled people).
+	const int scale = _roseTattooHiresScale;
+	const int srcW = nativeFrame._frame.w, srcH = nativeFrame._frame.h;
+	const double kx = (double)nativeW / srcW, ky = (double)nativeH / srcH; // native draw scaling
+	const double assetNativeW = (double)overrideSurface.w / assetScale;
+	const double assetNativeH = (double)overrideSurface.h / assetScale;
+	const double originX = horizFlip ? srcW - (geometry.originX + assetNativeW) : geometry.originX;
+	const int ox = nativeRect.left + (int)floor(originX * kx * scale + 0.5);
+	const int oy = nativeRect.top + (int)floor(geometry.originY * ky * scale + 0.5);
+	const int ow = MAX(1, (int)floor(assetNativeW * kx * scale + 0.5));
+	const int oh = MAX(1, (int)floor(assetNativeH * ky * scale + 0.5));
+	const Common::Rect overrideRect(ox, oy, ox + ow, oy + oh);
+
+	Common::Rect area = overrideRect;
+	area.clip(layer.getBounds());
+	if (area.isEmpty())
+		return Common::Rect();
+	const bool filtered = _roseTattooHiresSpriteFilter != kRoseTattooHiresSpriteNearest &&
+		(ow != overrideSurface.w || oh != overrideSurface.h);
+	Common::Array<HiresSpriteFilterAxis> filterX;
+	if (filtered) {
+		filterX.resize(area.width());
+		for (int dx = area.left; dx < area.right; ++dx)
+			filterX[dx - area.left] = hiresSpriteFilterAxis(dx - ox, overrideSurface.w, ow, horizFlip);
+	}
+
+	for (int dy = area.top; dy < area.bottom; ++dy) {
+		const int sy = dy - oy;
+		HiresSpriteFilterAxis filterY = { 0, 0, 0 };
+		if (filtered)
+			filterY = hiresSpriteFilterAxis(sy, overrideSurface.h, oh, false);
+		for (int dx = area.left; dx < area.right; ++dx) {
+			const int sx = dx - ox;
+			// Native frame pixel under this output pixel, if any.
+			bool insideNative = nativeRect.contains(dx, dy);
+			byte index = TRANSPARENCY;
+			if (insideNative) {
+				const int nativeX = hiresNativeSample((dx - nativeRect.left) / scale, srcW, nativeW, horizFlip);
+				const int nativeY = hiresNativeSample((dy - nativeRect.top) / scale, srcH, nativeH, false);
+				index = nativeFrame._frame.getPixel(nativeX, nativeY);
+			}
+			if (!geometry.ownAlpha && index == TRANSPARENCY)
+				continue; // "native" alpha: clipped to the native sprite's pixels
+
+			const uint32 nearestPixel = overrideSurface.getPixel(
+				hiresSpriteNearestSample(sx, overrideSurface.w, ow, horizFlip), sy * overrideSurface.h / oh);
+			uint32 pixel = nearestPixel;
+			if (filtered) {
+				pixel = hiresSpriteBilinearSample(overrideSurface, filterX[dx - area.left], filterY);
+				if (_roseTattooHiresSpriteFilter == kRoseTattooHiresSpriteEdge)
+					pixel = hiresSpriteEdgeSample(overrideSurface.format, nearestPixel, pixel);
+			}
+			uint8 a, r, g, b;
+			layer.format.colorToARGB(pixel, a, r, g, b);
+			uint8 nearestAlpha, nr, ng, nb;
+			layer.format.colorToARGB(nearestPixel, nearestAlpha, nr, ng, nb);
+			if (trackNativeProvenance && (index != TRANSPARENCY || nearestAlpha)) {
+				// Own-alpha pixels outside the native mask claim whatever the
+				// native framebuffer shows there now (normally background), so
+				// later native draws over them still win at blend time.
+				const int nx = dx / scale, ny = dy / scale;
+				if (nx >= 0 && nx < _backBuffer1.w && ny >= 0 && ny < _backBuffer1.h) {
+					const int idx = ny * _backBuffer1.w + nx;
+					_roseTattooHiresSceneSpriteExpectedNative[idx] = (byte)_backBuffer1.getPixel(nx, ny);
+					_roseTattooHiresSceneSpriteExpectedValid[idx] = 1;
+				}
+			}
+			if (!a)
+				continue;
+			layer.setPixel(dx, dy, hiresSpriteSourceOver(layer.format, pixel, layer.getPixel(dx, dy)));
+		}
+	}
+
+	Common::Rect result = overrideRect;
+	result.extend(nativeRect);
+	return result;
+}
+
 void Screen::queueRoseTattooHiresSprite(const Common::String &resourceName, int frameIndex,
 		const ImageFrame &nativeFrame, const Common::Point &pt, bool horizFlip, int scaleVal) {
 	Common::Rect queuedRect = blitRoseTattooHiresSpriteOverride(_roseTattooHiresSpriteLayer,
@@ -620,6 +849,14 @@ void Screen::queueRoseTattooHiresPersonSprite(ImageFile *owner, const Common::St
 		return;
 	const char *mode = getenv("SCUMMVM_SHERLOCK_TATTOO_PALETTE_SAFE_SPRITES");
 	if (!IS_ROSE_TATTOO || IS_3DO || !mode || strcmp(mode, "1")) {
+		queueRoseTattooHiresSceneSprite(legacyResource, frameIndex, nativeFrame, pt, horizFlip, scaleVal);
+		return;
+	}
+
+	// A neutral-lit master (frames.json "graded": true) replaces the per-palette
+	// variants: the room grade takes the place of the palette projection.
+	if (_roseTattooHiresScale > 1 && !_roseTattooHiresFormat.isCLUT8() && frameIndex >= 0 &&
+			!legacyResource.empty() && getRoseTattooHiresSidecar(legacyResource).get(frameIndex).graded) {
 		queueRoseTattooHiresSceneSprite(legacyResource, frameIndex, nativeFrame, pt, horizFlip, scaleVal);
 		return;
 	}

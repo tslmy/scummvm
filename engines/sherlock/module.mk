@@ -53,6 +53,7 @@ MODULE_OBJS = \
 	events.o \
 	fixed_text.o \
 	fonts.o \
+	hires_sidecar.o \
 	image_file.o \
 	image_file_stream.o \
 	inventory.o \

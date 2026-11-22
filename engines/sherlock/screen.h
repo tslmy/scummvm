@@ -30,6 +30,7 @@
 #include "graphics/managed_surface.h"
 #include "sherlock/hires_haze_fallback.h"
 #include "sherlock/hires_palette.h"
+#include "sherlock/hires_sidecar.h"
 #include "sherlock/image_file.h"
 #include "sherlock/surface.h"
 #include "sherlock/resources.h"
@@ -95,12 +96,28 @@ private:
 		Graphics::Surface *surface; // null also caches an absent asset
 		uint32 lastUsed;
 		uint32 bytes;
+		int assetScale;             // @Nx of the decoded file
+		HiresFrameGeometry geometry; // from frames.json (hasEntry false if none)
 	};
 	Common::Array<HiresSpriteCacheEntry> _roseTattooHiresSpriteCache;
 	uint32 _roseTattooHiresSpriteCacheBytes, _roseTattooHiresSpriteCacheClock;
+	/**
+	 * Decoded override for a frame, or null. nativeWidth/Height are the native
+	 * frame's size: without a frames.json entry the file must be exactly that
+	 * size times its asset scale; with one it may be any size within the
+	 * sidecar caps. assetScale and geometry describe the returned surface.
+	 */
 	const Graphics::Surface *getRoseTattooHiresSprite(const Common::String &resourceName, int frameIndex,
-		int expectedWidth, int expectedHeight, const Common::String &cacheDiscriminator);
+		int nativeWidth, int nativeHeight, const Common::String &cacheDiscriminator,
+		int *assetScale = nullptr, HiresFrameGeometry *geometry = nullptr);
 	void clearRoseTattooHiresSpriteCache();
+
+	// frames.json per resource, loaded once (also caches absent/invalid ones)
+	Common::HashMap<Common::String, HiresResourceSidecar, Common::IgnoreCase_Hash, Common::IgnoreCase_EqualTo> _roseTattooHiresSidecars;
+	const HiresResourceSidecar &getRoseTattooHiresSidecar(const Common::String &resourceName);
+	// scene_NNN/grade.json of the current room
+	HiresRoomGrade _roseTattooHiresRoomGrade;
+	void loadRoseTattooHiresRoomGrade(int sceneNumber);
 
 	/**
 	 * True-color RGBA layer that hires text (see queueRoseTattooHiresText())
@@ -216,6 +233,11 @@ private:
 		const Common::Point &pt, bool horizFlip, int scaleVal, bool trackNativeProvenance = false,
 		bool opaqueNative = false, bool worldNativeFallback = false,
 		const Common::String &cacheDiscriminator = Common::String());
+	// blitRoseTattooHiresSpriteOverride() for a frame with a frames.json entry
+	Common::Rect blitRoseTattooHiresSidecarSprite(Graphics::ManagedSurface &layer,
+		const Graphics::Surface &overrideSurface, int assetScale, const HiresFrameGeometry &geometry,
+		const ImageFrame &nativeFrame, const Common::Rect &nativeRect, int nativeW, int nativeH, bool horizFlip,
+		bool trackNativeProvenance);
 	bool roseTattooSceneOwnsPixel(int screenX, int screenY) const;
 protected:
 	SherlockEngine *_vm;
@@ -445,7 +467,7 @@ public:
 	 * fully transparent, never a color-keyed sentinel).
 	 */
 	bool loadRoseTattooHiresCursorOverride(const Common::String &resourceName, int frameIndex,
-		Graphics::Surface &outSurface);
+		Graphics::Surface &outSurface, int *assetScale = nullptr);
 
 	/**
 	 * Queues an AI-upscaled sprite override (see
