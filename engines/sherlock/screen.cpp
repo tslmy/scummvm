@@ -278,7 +278,11 @@ bool Screen::loadRoseTattooHiresBackgroundFromPath(const Common::Path &overrideP
 	const Graphics::Surface *surface = decoder.getSurface();
 	const int expectedWidth = _backBuffer1.width() * _roseTattooHiresScale;
 	const int expectedHeight = _backBuffer1.height() * _roseTattooHiresScale;
-	if (!surface || surface->w != expectedWidth || surface->h != expectedHeight) {
+	// Mixed-scale packs: any integer multiple of the room size is accepted and
+	// resampled (bilinear) to the output scale.
+	const int assetScale = surface && _backBuffer1.width() > 0 ? surface->w / _backBuffer1.width() : 0;
+	if (!surface || assetScale < 1 || surface->w != _backBuffer1.width() * assetScale ||
+			surface->h != _backBuffer1.height() * assetScale) {
 		warning("Ignoring Rose Tattoo hires background override with unexpected dimensions: %s",
 			overridePath.toString(Common::Path::kNativeSeparator).c_str());
 		return false;
@@ -291,6 +295,8 @@ bool Screen::loadRoseTattooHiresBackgroundFromPath(const Common::Path &overrideP
 	const Graphics::Palette &sourcePalette = decoder.getPalette();
 	const byte *sourcePaletteData = sourcePalette.data();
 
+	// Decode to packed RGB once, then write at the output scale.
+	Common::Array<uint32> rgb(surface->w * surface->h);
 	for (int y = 0; y < surface->h; ++y) {
 		for (int x = 0; x < surface->w; ++x) {
 			uint32 color = surface->getPixel(x, y);
@@ -303,7 +309,35 @@ bool Screen::loadRoseTattooHiresBackgroundFromPath(const Common::Path &overrideP
 			} else {
 				surface->format.colorToRGB(color, r, g, b);
 			}
+			rgb[y * surface->w + x] = (r << 16) | (g << 8) | b;
+		}
+	}
 
+	Common::Array<HiresSpriteFilterAxis> axisX;
+	if (assetScale != _roseTattooHiresScale) {
+		axisX.resize(expectedWidth);
+		for (int x = 0; x < expectedWidth; ++x)
+			axisX[x] = hiresSpriteFilterAxis(x, surface->w, expectedWidth, false);
+	}
+	for (int y = 0; y < expectedHeight; ++y) {
+		const HiresSpriteFilterAxis ay = assetScale != _roseTattooHiresScale ?
+			hiresSpriteFilterAxis(y, surface->h, expectedHeight, false) : HiresSpriteFilterAxis{ y, y, 0 };
+		for (int x = 0; x < expectedWidth; ++x) {
+			uint32 packed;
+			if (assetScale == _roseTattooHiresScale) {
+				packed = rgb[y * surface->w + x];
+			} else {
+				const HiresSpriteFilterAxis &ax = axisX[x];
+				const uint32 p00 = rgb[ay.first * surface->w + ax.first], p01 = rgb[ay.first * surface->w + ax.second];
+				const uint32 p10 = rgb[ay.second * surface->w + ax.first], p11 = rgb[ay.second * surface->w + ax.second];
+				packed = 0;
+				for (int shift = 0; shift <= 16; shift += 8) {
+					const uint32 top = ((p00 >> shift) & 255) * (256 - ax.fraction) + ((p01 >> shift) & 255) * ax.fraction;
+					const uint32 bottom = ((p10 >> shift) & 255) * (256 - ax.fraction) + ((p11 >> shift) & 255) * ax.fraction;
+					packed |= (((top * (256 - ay.fraction) + bottom * ay.fraction + 32768) >> 16) & 255) << shift;
+				}
+			}
+			const byte r = (packed >> 16) & 255, g = (packed >> 8) & 255, b = packed & 255;
 			uint32 outputColor = _roseTattooHiresFormat.isCLUT8() ?
 				closestPaletteEntry(_cMap, r, g, b) :
 				_roseTattooHiresFormat.RGBToColor(r, g, b);
@@ -326,9 +360,15 @@ bool Screen::loadRoseTattooHiresBackgroundOverride(int sceneNumber) {
 	if (!overrideDir || !*overrideDir)
 		return false;
 
-	Common::Path overridePath(Common::String::format(
-		"%s/scene_%03d/background@%dx.png", overrideDir, sceneNumber, _roseTattooHiresScale), '/');
-	return loadRoseTattooHiresBackgroundFromPath(overridePath);
+	for (int sc = _roseTattooHiresScale; sc >= 1; --sc)
+		if (loadRoseTattooHiresBackgroundFromPath(Common::Path(Common::String::format(
+				"%s/scene_%03d/background@%dx.png", overrideDir, sceneNumber, sc), '/')))
+			return true;
+	for (int sc = _roseTattooHiresScale + 1; sc <= 4; ++sc)
+		if (loadRoseTattooHiresBackgroundFromPath(Common::Path(Common::String::format(
+				"%s/scene_%03d/background@%dx.png", overrideDir, sceneNumber, sc), '/')))
+			return true;
+	return false;
 }
 
 bool Screen::loadRoseTattooHiresMapOverride() {
@@ -344,9 +384,15 @@ bool Screen::loadRoseTattooHiresMapOverride() {
 	if (!overrideDir || !*overrideDir)
 		return false;
 
-	Common::Path overridePath(Common::String::format(
-		"%s/sprites/map_vgs/frame_000@%dx.png", overrideDir, _roseTattooHiresScale), '/');
-	return loadRoseTattooHiresBackgroundFromPath(overridePath);
+	for (int sc = _roseTattooHiresScale; sc >= 1; --sc)
+		if (loadRoseTattooHiresBackgroundFromPath(Common::Path(Common::String::format(
+				"%s/sprites/map_vgs/frame_000@%dx.png", overrideDir, sc), '/')))
+			return true;
+	for (int sc = _roseTattooHiresScale + 1; sc <= 4; ++sc)
+		if (loadRoseTattooHiresBackgroundFromPath(Common::Path(Common::String::format(
+				"%s/sprites/map_vgs/frame_000@%dx.png", overrideDir, sc), '/')))
+			return true;
+	return false;
 }
 
 bool Screen::loadRoseTattooHiresCursorOverride(const Common::String &resourceName, int frameIndex,
@@ -948,43 +994,81 @@ void Screen::applyRoseTattooHiresHaze() {
 	if (!_roseTattooHazeEnabled || _roseTattooHazeValid.empty())
 		return;
 	const int scale = _roseTattooHiresScale;
-	// Native coverage of the visible screen, 1 where the haze still shows.
-	Common::Array<byte> cover(SHERLOCK_SCREEN_WIDTH * SHERLOCK_SCREEN_HEIGHT, 0);
+	const int nw = SHERLOCK_SCREEN_WIDTH, nh = SHERLOCK_SCREEN_HEIGHT;
+	// Native coverage of the visible screen, 255 where the haze still shows.
+	Common::Array<byte> cover(nw * nh, 0);
 	bool any = false;
-	for (int y = 0; y < SHERLOCK_SCREEN_HEIGHT; ++y)
-		for (int x = 0; x < SHERLOCK_SCREEN_WIDTH; ++x)
+	for (int y = 0; y < nh; ++y)
+		for (int x = 0; x < nw; ++x)
 			if (roseTattooHazePixel(x, y)) {
-				cover[y * SHERLOCK_SCREEN_WIDTH + x] = 255;
+				cover[y * nw + x] = 255;
 				any = true;
 			}
 	if (!any)
 		return;
-	const int outW = SHERLOCK_SCREEN_WIDTH * scale, outH = SHERLOCK_SCREEN_HEIGHT * scale;
-	for (int oy = 0; oy < outH; ++oy) {
-		// Bilinear coverage at the output pixel centre, in native pixel centres.
-		const HiresSpriteFilterAxis ay = hiresSpriteFilterAxis(oy, SHERLOCK_SCREEN_HEIGHT, outH, false);
-		const byte *row0 = &cover[ay.first * SHERLOCK_SCREEN_WIDTH];
-		const byte *row1 = &cover[ay.second * SHERLOCK_SCREEN_WIDTH];
-		for (int ox = 0; ox < outW; ++ox) {
-			const int nx = ox / scale;
-			const int ny = oy / scale;
-			if (!cover[ny * SHERLOCK_SCREEN_WIDTH + nx] && !row0[nx] && !row1[nx] &&
-					!(nx > 0 && (row0[nx - 1] || row1[nx - 1])) &&
-					!(nx + 1 < SHERLOCK_SCREEN_WIDTH && (row0[nx + 1] || row1[nx + 1])))
-				continue; // fast path: no haze nearby
-			const HiresSpriteFilterAxis ax = hiresSpriteFilterAxis(ox, SHERLOCK_SCREEN_WIDTH, outW, false);
-			const uint32 w = (row0[ax.first] * (256 - ax.fraction) + row0[ax.second] * ax.fraction) * (256 - ay.fraction) +
-				(row1[ax.first] * (256 - ax.fraction) + row1[ax.second] * ax.fraction) * ay.fraction;
-			const float k = w / (255.0f * 65536.0f);
-			if (k <= 0)
-				continue;
-			byte a, r, g, b;
-			_roseTattooHiresComposite.format.colorToARGB(_roseTattooHiresComposite.getPixel(ox, oy), a, r, g, b);
-			const float fr = 1 + k * (_roseTattooHazeFactor[0] - 1);
-			const float fg = 1 + k * (_roseTattooHazeFactor[1] - 1);
-			const float fb = 1 + k * (_roseTattooHazeFactor[2] - 1);
-			_roseTattooHiresComposite.setPixel(ox, oy, _roseTattooHiresComposite.format.ARGBToColor(255,
-				(byte)MIN(255.0f, r * fr + 0.5f), (byte)MIN(255.0f, g * fg + 0.5f), (byte)MIN(255.0f, b * fb + 0.5f)));
+
+	// Full-strength per-channel tables for the interior.
+	byte full[3][256];
+	for (int c = 0; c < 3; ++c)
+		for (int v = 0; v < 256; ++v)
+			full[c][v] = (byte)MIN(255.0f, v * _roseTattooHazeFactor[c] + 0.5f);
+
+	Graphics::ManagedSurface &out = _roseTattooHiresComposite;
+	const Graphics::PixelFormat &fmt = out.format;
+	const int outW = nw * scale, outH = nh * scale;
+	for (int ny = 0; ny < nh; ++ny) {
+		for (int nx = 0; nx < nw; ++nx) {
+			// Coverage of the 3x3 neighbourhood decides the case.
+			int lo = 255, hi = 0;
+			for (int dy = -1; dy <= 1; ++dy) {
+				const int yy = CLIP(ny + dy, 0, nh - 1);
+				for (int dx = -1; dx <= 1; ++dx) {
+					const byte v = cover[yy * nw + CLIP(nx + dx, 0, nw - 1)];
+					lo = MIN<int>(lo, v);
+					hi = MAX<int>(hi, v);
+				}
+			}
+			if (!hi)
+				continue; // no haze nearby
+			for (int sy = 0; sy < scale; ++sy) {
+				const int oy = ny * scale + sy;
+				if (oy >= outH)
+					break;
+				HiresSpriteFilterAxis ay = { 0, 0, 0 };
+				if (lo != hi)
+					ay = hiresSpriteFilterAxis(oy, nh, outH, false);
+				for (int sx = 0; sx < scale; ++sx) {
+					const int ox = nx * scale + sx;
+					if (ox >= outW)
+						break;
+					byte a, r, g, b;
+					uint32 *px32 = fmt.bytesPerPixel == 4 ? (uint32 *)out.getBasePtr(ox, oy) : nullptr;
+					hiresUnpack(fmt, px32 ? *px32 : out.getPixel(ox, oy), a, r, g, b);
+					if (lo == hi) {
+						// Interior: constant full haze.
+						r = full[0][r];
+						g = full[1][g];
+						b = full[2][b];
+					} else {
+						// Edge: bilinear coverage at the output pixel centre.
+						const HiresSpriteFilterAxis ax = hiresSpriteFilterAxis(ox, nw, outW, false);
+						const byte *row0 = &cover[ay.first * nw];
+						const byte *row1 = &cover[ay.second * nw];
+						const uint32 w = (row0[ax.first] * (256 - ax.fraction) + row0[ax.second] * ax.fraction) * (256 - ay.fraction) +
+							(row1[ax.first] * (256 - ax.fraction) + row1[ax.second] * ax.fraction) * ay.fraction;
+						const float k = w / (255.0f * 65536.0f);
+						if (k <= 0)
+							continue;
+						r = (byte)MIN(255.0f, r * (1 + k * (_roseTattooHazeFactor[0] - 1)) + 0.5f);
+						g = (byte)MIN(255.0f, g * (1 + k * (_roseTattooHazeFactor[1] - 1)) + 0.5f);
+						b = (byte)MIN(255.0f, b * (1 + k * (_roseTattooHazeFactor[2] - 1)) + 0.5f);
+					}
+					if (px32)
+						*px32 = hiresPack(fmt, 255, r, g, b);
+					else
+						out.setPixel(ox, oy, fmt.ARGBToColor(255, r, g, b));
+				}
+			}
 		}
 	}
 }
@@ -1063,26 +1147,46 @@ void Screen::blendRoseTattooHiresSceneSpriteLayer() {
 	const int scrollX = _currentScroll.x * scale, scrollY = _currentScroll.y * scale;
 	spriteRect.clip(Common::Rect(scrollX, scrollY, scrollX + SHERLOCK_SCREEN_WIDTH * scale,
 		scrollY + SHERLOCK_SCREEN_HEIGHT * scale));
+	const Graphics::PixelFormat &layerFormat = _roseTattooHiresSceneSpriteLayer.format;
+	Graphics::ManagedSurface &out = _roseTattooHiresComposite;
+	const bool direct32 = out.format.bytesPerPixel == 4;
 	for (int y = spriteRect.top; y < spriteRect.bottom; ++y) {
+		const uint32 *layerRow = (const uint32 *)_roseTattooHiresSceneSpriteLayer.getBasePtr(0, y);
+		const int screenY = y - scrollY;
+		uint32 *outRow = direct32 ? (uint32 *)out.getBasePtr(0, screenY) : nullptr;
+		int ownedNativeX = -1;
+		bool owned = false;
 		for (int x = spriteRect.left; x < spriteRect.right; ++x) {
+			// The layer is RGBA32: skip transparent pixels before unpacking.
+			const uint32 layerPixel = layerRow[x];
+			if (!((layerPixel >> layerFormat.aShift) & 255))
+				continue;
+			const int screenX = x - scrollX;
+			if (screenX / scale != ownedNativeX) {
+				ownedNativeX = screenX / scale;
+				owned = roseTattooSceneOwnsPixel(ownedNativeX, screenY / scale);
+			}
+			if (!owned)
+				continue;
+
 			uint8 a, r, g, b;
-			_roseTattooHiresSceneSpriteLayer.format.colorToARGB(
-				_roseTattooHiresSceneSpriteLayer.getPixel(x, y), a, r, g, b);
-			if (a == 0)
+			hiresUnpack(layerFormat, layerPixel, a, r, g, b);
+			if (a == 255) {
+				if (outRow)
+					outRow[screenX] = hiresPack(out.format, 0xff, r, g, b);
+				else
+					out.setPixel(screenX, screenY, out.format.ARGBToColor(0xff, r, g, b));
 				continue;
-
-			const int screenX = x - scrollX, screenY = y - scrollY;
-			if (!roseTattooSceneOwnsPixel(screenX / scale, screenY / scale))
-				continue;
-
+			}
 			uint8 dstA, dstR, dstG, dstB;
-			_roseTattooHiresComposite.format.colorToARGB(_roseTattooHiresComposite.getPixel(screenX, screenY), dstA, dstR, dstG, dstB);
-
+			hiresUnpack(out.format, outRow ? outRow[screenX] : out.getPixel(screenX, screenY), dstA, dstR, dstG, dstB);
 			const uint8 outR = (uint8)((r * a + dstR * (255 - a)) / 255);
 			const uint8 outG = (uint8)((g * a + dstG * (255 - a)) / 255);
 			const uint8 outB = (uint8)((b * a + dstB * (255 - a)) / 255);
-			_roseTattooHiresComposite.setPixel(screenX, screenY,
-				_roseTattooHiresComposite.format.ARGBToColor(0xff, outR, outG, outB));
+			if (outRow)
+				outRow[screenX] = hiresPack(out.format, 0xff, outR, outG, outB);
+			else
+				out.setPixel(screenX, screenY, out.format.ARGBToColor(0xff, outR, outG, outB));
 		}
 	}
 }
@@ -1129,12 +1233,15 @@ void Screen::blendRoseTattooHiresBakedSprites() {
 	rect.clip(_roseTattooHiresBakedSpriteLayer.getBounds());
 	rect.clip(Common::Rect(scrollX, scrollY, scrollX + SHERLOCK_SCREEN_WIDTH * scale,
 		scrollY + SHERLOCK_SCREEN_HEIGHT * scale));
+	const Graphics::PixelFormat &bakedFormat = _roseTattooHiresBakedSpriteLayer.format;
 	for (int y = rect.top; y < rect.bottom; ++y) {
+		const uint32 *bakedRow = (const uint32 *)_roseTattooHiresBakedSpriteLayer.getBasePtr(0, y);
 		for (int x = rect.left; x < rect.right; ++x) {
-			byte a, r, g, b, da, dr, dg, db;
-			_roseTattooHiresBakedSpriteLayer.format.colorToARGB(_roseTattooHiresBakedSpriteLayer.getPixel(x, y), a, r, g, b);
-			if (!a)
+			const uint32 bakedPixel = bakedRow[x];
+			if (!((bakedPixel >> bakedFormat.aShift) & 255))
 				continue;
+			byte a, r, g, b, da, dr, dg, db;
+			bakedFormat.colorToARGB(bakedPixel, a, r, g, b);
 			const int dx = x - scrollX, dy = y - scrollY;
 			_roseTattooHiresComposite.format.colorToARGB(_roseTattooHiresComposite.getPixel(dx, dy), da, dr, dg, db);
 			_roseTattooHiresComposite.setPixel(dx, dy, _roseTattooHiresComposite.format.ARGBToColor(255,

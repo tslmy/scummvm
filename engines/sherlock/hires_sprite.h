@@ -104,9 +104,33 @@ inline uint32 hiresSpriteEdgeSample(const Graphics::PixelFormat &format, uint32 
 	return format.ARGBToColor(bilinearAlpha, red, green, blue);
 }
 
+// colorToARGB() without the call for lossless 32-bit formats (hot loops).
+inline void hiresUnpack(const Graphics::PixelFormat &format, uint32 color, byte &a, byte &r, byte &g, byte &b) {
+	if (format.bytesPerPixel == 4 && !format.rLoss && !format.gLoss && !format.bLoss) {
+		a = format.aLoss >= 8 ? 255 : (byte)(color >> format.aShift);
+		r = (byte)(color >> format.rShift);
+		g = (byte)(color >> format.gShift);
+		b = (byte)(color >> format.bShift);
+	} else {
+		format.colorToARGB(color, a, r, g, b);
+	}
+}
+
+inline uint32 hiresPack(const Graphics::PixelFormat &format, byte a, byte r, byte g, byte b) {
+	if (format.bytesPerPixel == 4 && !format.rLoss && !format.gLoss && !format.bLoss)
+		return (format.aLoss >= 8 ? 0 : (uint32)a << format.aShift) | ((uint32)r << format.rShift) |
+			((uint32)g << format.gShift) | ((uint32)b << format.bShift);
+	return format.ARGBToColor(a, r, g, b);
+}
+
 // Straight-alpha source-over into an RGBA layer. Premultiplied arithmetic is
 // used only for the calculation; the result remains straight-alpha RGBA.
 inline uint32 hiresSpriteSourceOver(const Graphics::PixelFormat &format, uint32 source, uint32 destination) {
+	const uint32 sourceAlpha = (source >> format.aShift) & 255;
+	if (!sourceAlpha)
+		return destination;
+	if (sourceAlpha == 255)
+		return source;
 	byte sa, sr, sg, sb, da, dr, dg, db;
 	format.colorToARGB(source, sa, sr, sg, sb);
 	if (!sa)
