@@ -249,6 +249,10 @@ private:
 	bool _roseTattooHazeEnabled;
 	bool roseTattooHazePixel(int screenX, int screenY) const;
 	void applyRoseTattooHiresHaze();
+	// Palette fades: per-channel tone curve from the room palette (_cMap) to
+	// the live palette, applied to the hires background and scene sprites.
+	bool roseTattooFadeCurves(byte curves[3][256]) const;
+	void applyRoseTattooHiresPaletteFade();
 public:
 	void setRoseTattooHiresHazeFactors(bool enabled, float r, float g, float b);
 	void beginRoseTattooHiresHaze();

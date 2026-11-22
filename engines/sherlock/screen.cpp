@@ -994,6 +994,68 @@ void Screen::applyRoseTattooHiresHaze() {
 	}
 }
 
+bool Screen::roseTattooFadeCurves(byte curves[3][256]) const {
+	byte live[Graphics::PALETTE_SIZE];
+	_roseTattooPalette.get(live, 0, Graphics::PALETTE_COUNT);
+	bool identity = true;
+	for (int c = 0; c < 3; ++c) {
+		int sum[256], count[256];
+		Common::fill(sum, sum + 256, 0);
+		Common::fill(count, count + 256, 0);
+		for (int idx = 0; idx < Graphics::PALETTE_COUNT; ++idx) {
+			sum[_cMap[idx * 3 + c]] += live[idx * 3 + c];
+			++count[_cMap[idx * 3 + c]];
+		}
+		// Known points, then linear interpolation between them; below the
+		// first known value scale towards 0, above the last keep its offset.
+		int prev = -1;
+		for (int v = 0; v < 256; ++v) {
+			if (!count[v])
+				continue;
+			const int y = (sum[v] + count[v] / 2) / count[v];
+			if (prev < 0) {
+				for (int u = 0; u < v; ++u)
+					curves[c][u] = v ? (byte)(y * u / v) : (byte)y;
+			} else {
+				const int py = curves[c][prev];
+				for (int u = prev + 1; u < v; ++u)
+					curves[c][u] = (byte)(py + (y - py) * (u - prev) / (v - prev));
+			}
+			curves[c][v] = (byte)y;
+			prev = v;
+		}
+		if (prev < 0)
+			return false;
+		for (int u = prev + 1; u < 256; ++u)
+			curves[c][u] = (byte)CLIP(curves[c][prev] + (u - prev), 0, 255);
+		// A fade maps equal room components to equal live components. Anything
+		// else (palette cycling, a different palette) is not a fade.
+		for (int idx = 0; idx < Graphics::PALETTE_COUNT; ++idx)
+			if (ABS((int)live[idx * 3 + c] - (int)curves[c][_cMap[idx * 3 + c]]) > 16)
+				return false;
+		for (int v = 0; v < 256 && identity; ++v)
+			if (ABS((int)curves[c][v] - v) > 1 && count[v])
+				identity = false;
+	}
+	return !identity;
+}
+
+void Screen::applyRoseTattooHiresPaletteFade() {
+	if (_roseTattooHiresFormat.isCLUT8())
+		return;
+	byte curves[3][256];
+	if (!roseTattooFadeCurves(curves))
+		return;
+	Graphics::ManagedSurface &out = _roseTattooHiresComposite;
+	for (int y = 0; y < out.h; ++y) {
+		for (int x = 0; x < out.w; ++x) {
+			byte a, r, g, b;
+			out.format.colorToARGB(out.getPixel(x, y), a, r, g, b);
+			out.setPixel(x, y, out.format.ARGBToColor(255, curves[0][r], curves[1][g], curves[2][b]));
+		}
+	}
+}
+
 void Screen::blendRoseTattooHiresSceneSpriteLayer() {
 	if (_roseTattooHiresSceneSpriteLayer.empty())
 		return;
@@ -1534,6 +1596,8 @@ void Screen::update() {
 	blendRoseTattooHiresSceneSpriteLayer();
 	// The haze pass runs after the scene draws and before the UI.
 	applyRoseTattooHiresHaze();
+	// Native UI pixels below already use the live (faded) palette.
+	applyRoseTattooHiresPaletteFade();
 
 	const byte *screenPixels = (const byte *)getPixels();
 	const byte *backgroundPixels = (const byte *)_backBuffer2.getPixels();
