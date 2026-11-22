@@ -31,6 +31,7 @@
 #include "sherlock/hires_haze_fallback.h"
 #include "sherlock/hires_palette.h"
 #include "sherlock/hires_sidecar.h"
+#include "sherlock/hires_warp.h"
 #include "sherlock/image_file.h"
 #include "sherlock/surface.h"
 #include "sherlock/resources.h"
@@ -249,11 +250,20 @@ private:
 	bool _roseTattooHazeEnabled;
 	bool roseTattooHazePixel(int screenX, int screenY) const;
 	void applyRoseTattooHiresHaze();
+	HiresRoomWarp _roseTattooHiresWarp;
+	bool _roseTattooWarpOverlay;
+	void loadRoseTattooHiresWarp(int sceneNumber);
+	// Blend a world-space (logic) layer into the composite through the warp.
+	void blendRoseTattooHiresWarpedLayer(const Graphics::ManagedSurface &layer, const Common::Rect &layerRect,
+		bool checkOwnership);
+	void drawRoseTattooWarpOverlay();
 	// Palette fades: per-channel tone curve from the room palette (_cMap) to
 	// the live palette, applied to the hires background and scene sprites.
 	bool roseTattooFadeCurves(byte curves[3][256]) const;
 	void applyRoseTattooHiresPaletteFade();
 public:
+	// Room warp (scene_NNN/geometry.json); invalid when the room has none.
+	const HiresRoomWarp &roseTattooHiresWarp() const { return _roseTattooHiresWarp; }
 	void setRoseTattooHiresHazeFactors(bool enabled, float r, float g, float b);
 	void beginRoseTattooHiresHaze();
 	void markRoseTattooHiresHaze(int worldX, int worldY, byte before, byte after);

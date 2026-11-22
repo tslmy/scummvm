@@ -85,7 +85,7 @@ void TattooUserInterface::lookAtObject() {
 	Scene &scene = *_vm->_scene;
 	Sound &sound = *_vm->_sound;
 	Talk &talk = *_vm->_talk;
-	Common::Point mousePos = events.mousePos();
+	Common::Point mousePos = events.sceneMousePos();
 	Common::String desc;
 
 	_lookPos = mousePos;
@@ -254,7 +254,7 @@ void TattooUserInterface::handleInput() {
 	TattooEngine &vm = *(TattooEngine *)_vm;
 	Events &events = *_vm->_events;
 	TattooScene &scene = *(TattooScene *)_vm->_scene;
-	Common::Point mousePos = events.mousePos();
+	Common::Point mousePos = events.sceneMousePos();
 
 	_keyState.keycode = Common::KEYCODE_INVALID;
 	_action = kActionNone;
@@ -389,7 +389,7 @@ void TattooUserInterface::doStandardControl() {
 	SaveManager &saves = *_vm->_saves;
 	TattooScene &scene = *(TattooScene *)_vm->_scene;
 	Talk &talk = *_vm->_talk;
-	Common::Point mousePos = events.mousePos();
+	Common::Point mousePos = events.sceneMousePos();
 
 	// Don't do any input processing whilst the prolog is running
 	// or the cursor is hidden (e.g. by a call to cmdMouseOnOff())
@@ -568,7 +568,7 @@ void TattooUserInterface::doLookControl() {
 void TattooUserInterface::displayObjectNames() {
 	Events &events = *_vm->_events;
 	Scene &scene = *_vm->_scene;
-	Common::Point mousePos = events.mousePos();
+	Common::Point mousePos = events.sceneMousePos();
 	_arrowZone = -1;
 
 	if (_bgFound == -1 || scene._currentScene == OVERHEAD_MAP2) {

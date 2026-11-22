@@ -151,6 +151,9 @@ public:
 	 * Get the current mouse position within the scene, adjusted by the scroll position
 	 */
 	Common::Point mousePos() const;
+	// mousePos() mapped back through the room warp: the logic-space point for
+	// scene hit tests and walk targets. Equal to mousePos() without a warp.
+	Common::Point sceneMousePos() const;
 
 	/**
 	 * Override the default frame rate

@@ -354,6 +354,16 @@ Common::Point Events::mousePos() const {
 	return _vm->_screen->_currentScroll + _mousePos;
 }
 
+Common::Point Events::sceneMousePos() const {
+	const Common::Point pos = mousePos();
+	const HiresRoomWarp &warp = _vm->_screen->roseTattooHiresWarp();
+	if (!warp.valid())
+		return pos;
+	int lx, ly;
+	warp.inverse(pos.x, pos.y, lx, ly);
+	return Common::Point(lx, ly);
+}
+
 void Events::setFrameRate(int newRate) {
 	_frameRate = newRate;
 }

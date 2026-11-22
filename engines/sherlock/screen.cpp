@@ -146,6 +146,10 @@ Screen::Screen(SherlockEngine *vm) : BaseSurface(
 	}
 	_roseTattooHiresJournalMode = false;
 	_roseTattooHazeEnabled = false;
+	{
+		const char *overlay = vm->getGameID() == GType_RoseTattoo ? getenv("SCUMMVM_SHERLOCK_TATTOO_WARP_OVERLAY") : nullptr;
+		_roseTattooWarpOverlay = overlay && !strcmp(overlay, "1");
+	}
 	_roseTattooHazeFactor[0] = _roseTattooHazeFactor[1] = _roseTattooHazeFactor[2] = 1.0f;
 	_roseTattooHiresDebugMode = vm->getGameID() == GType_RoseTattoo ? roseTattooHiresDebugModeFromEnv() : kRoseTattooHiresComposite;
 	const char *hazeFallback = vm->getGameID() == GType_RoseTattoo ? getenv("SCUMMVM_SHERLOCK_TATTOO_HAZE_NATIVE_FALLBACK") : nullptr;
@@ -205,6 +209,7 @@ void Screen::selectRoseTattooHazeFallbackScene(int scene) {
 void Screen::clearRoseTattooHiresBackground() {
 	_roseTattooHiresBackground.free();
 	_roseTattooHiresComposite.free();
+	_roseTattooHiresWarp.clear();
 }
 
 void Screen::getPalette(byte palette[Graphics::PALETTE_SIZE]) {
@@ -360,15 +365,17 @@ bool Screen::loadRoseTattooHiresBackgroundOverride(int sceneNumber) {
 	if (!overrideDir || !*overrideDir)
 		return false;
 
-	for (int sc = _roseTattooHiresScale; sc >= 1; --sc)
-		if (loadRoseTattooHiresBackgroundFromPath(Common::Path(Common::String::format(
-				"%s/scene_%03d/background@%dx.png", overrideDir, sceneNumber, sc), '/')))
-			return true;
-	for (int sc = _roseTattooHiresScale + 1; sc <= 4; ++sc)
-		if (loadRoseTattooHiresBackgroundFromPath(Common::Path(Common::String::format(
-				"%s/scene_%03d/background@%dx.png", overrideDir, sceneNumber, sc), '/')))
-			return true;
-	return false;
+	bool loaded = false;
+	for (int sc = _roseTattooHiresScale; sc >= 1 && !loaded; --sc)
+		loaded = loadRoseTattooHiresBackgroundFromPath(Common::Path(Common::String::format(
+			"%s/scene_%03d/background@%dx.png", overrideDir, sceneNumber, sc), '/'));
+	for (int sc = _roseTattooHiresScale + 1; sc <= 4 && !loaded; ++sc)
+		loaded = loadRoseTattooHiresBackgroundFromPath(Common::Path(Common::String::format(
+			"%s/scene_%03d/background@%dx.png", overrideDir, sceneNumber, sc), '/'));
+	// A warp only makes sense for a redrawn background in picture space.
+	if (loaded)
+		loadRoseTattooHiresWarp(sceneNumber);
+	return loaded;
 }
 
 bool Screen::loadRoseTattooHiresMapOverride() {
@@ -1013,6 +1020,26 @@ void Screen::applyRoseTattooHiresHaze() {
 		for (int v = 0; v < 256; ++v)
 			full[c][v] = (byte)MIN(255.0f, v * _roseTattooHazeFactor[c] + 0.5f);
 
+	if (_roseTattooHiresWarp.valid() && _roseTattooHiresWarp.inverseScale() == scale) {
+		// Warped room: haze follows the picture (nearest native coverage).
+		Graphics::ManagedSurface &wout = _roseTattooHiresComposite;
+		const int scrollX = _currentScroll.x * scale, scrollY = _currentScroll.y * scale;
+		for (int oy = 0; oy < nh * scale; ++oy) {
+			for (int ox = 0; ox < nw * scale; ++ox) {
+				int x16, y16;
+				if (!_roseTattooHiresWarp.inverseAt(ox + scrollX, oy + scrollY, x16, y16))
+					continue;
+				const int sx = x16 / 16 - _currentScroll.x, sy = y16 / 16 - _currentScroll.y;
+				if (sx < 0 || sy < 0 || sx >= nw || sy >= nh || !cover[sy * nw + sx])
+					continue;
+				byte a, r, g, b;
+				hiresUnpack(wout.format, wout.getPixel(ox, oy), a, r, g, b);
+				wout.setPixel(ox, oy, hiresPack(wout.format, 255, full[0][r], full[1][g], full[2][b]));
+			}
+		}
+		return;
+	}
+
 	Graphics::ManagedSurface &out = _roseTattooHiresComposite;
 	const Graphics::PixelFormat &fmt = out.format;
 	const int outW = nw * scale, outH = nh * scale;
@@ -1135,9 +1162,115 @@ void Screen::applyRoseTattooHiresPaletteFade() {
 	}
 }
 
+void Screen::loadRoseTattooHiresWarp(int sceneNumber) {
+	_roseTattooHiresWarp.clear();
+	const char *overrideDir = roseTattooAssetPackDir();
+	if (!overrideDir || _roseTattooHiresFormat.isCLUT8())
+		return;
+	const Common::Path path(Common::String::format("%s/scene_%03d/geometry.json", overrideDir, sceneNumber), '/');
+	const Common::FSNode node(path);
+	Common::File file;
+	if (!node.exists() || !file.open(node))
+		return;
+	Common::String error;
+	if (!_roseTattooHiresWarp.parse(file.readString(0, file.size()), _backBuffer1.w, _backBuffer1.h, error)) {
+		warning("Ignoring Rose Tattoo room warp %s: %s", path.toString('/').c_str(), error.c_str());
+		return;
+	}
+	_roseTattooHiresWarp.buildInverse(_roseTattooHiresScale);
+}
+
+void Screen::blendRoseTattooHiresWarpedLayer(const Graphics::ManagedSurface &layer, const Common::Rect &layerRect,
+		bool checkOwnership) {
+	if (layer.empty() || layerRect.isEmpty())
+		return;
+	const int scale = _roseTattooHiresScale;
+	const int scrollX = _currentScroll.x * scale, scrollY = _currentScroll.y * scale;
+	const int outW = SHERLOCK_SCREEN_WIDTH * scale, outH = SHERLOCK_SCREEN_HEIGHT * scale;
+	Graphics::ManagedSurface &out = _roseTattooHiresComposite;
+	for (int oy = 0; oy < outH; ++oy) {
+		for (int ox = 0; ox < outW; ++ox) {
+			int x16, y16;
+			if (!_roseTattooHiresWarp.inverseAt(ox + scrollX, oy + scrollY, x16, y16))
+				continue;
+			// Logic point in output px of the world layer (nearest sample).
+			const int lx = x16 * scale / 16, ly = y16 * scale / 16;
+			if (!layerRect.contains(lx, ly) || lx >= layer.w || ly >= layer.h)
+				continue;
+			const uint32 pixel = ((const uint32 *)layer.getBasePtr(0, ly))[lx];
+			if (!((pixel >> layer.format.aShift) & 255))
+				continue;
+			if (checkOwnership && !roseTattooSceneOwnsPixel(x16 / 16 - _currentScroll.x, y16 / 16 - _currentScroll.y))
+				continue;
+			byte a, r, g, b, da, dr, dg, db;
+			hiresUnpack(layer.format, pixel, a, r, g, b);
+			hiresUnpack(out.format, out.getPixel(ox, oy), da, dr, dg, db);
+			out.setPixel(ox, oy, hiresPack(out.format, 255, (r * a + dr * (255 - a)) / 255,
+				(g * a + dg * (255 - a)) / 255, (b * a + db * (255 - a)) / 255));
+		}
+	}
+}
+
+void Screen::drawRoseTattooWarpOverlay() {
+	// Debug view (SCUMMVM_SHERLOCK_TATTOO_WARP_OVERLAY=1): hotspot boxes (green),
+	// walk zones (blue) and exits (red) of the logic space, drawn through the
+	// warp onto the picture, plus the warp grid (grey) when the room has one.
+	if (!_roseTattooWarpOverlay || _roseTattooHiresComposite.empty() || !_vm->_scene)
+		return;
+	Graphics::ManagedSurface &out = _roseTattooHiresComposite;
+	const int scale = _roseTattooHiresScale;
+	const int scrollX = _currentScroll.x * scale, scrollY = _currentScroll.y * scale;
+	auto plot = [&](float lx, float ly, uint32 color) {
+		float px, py;
+		_roseTattooHiresWarp.forward(lx, ly, px, py);
+		const int ox = (int)(px * scale) - scrollX, oy = (int)(py * scale) - scrollY;
+		for (int dy = 0; dy < 2; ++dy)
+			for (int dx = 0; dx < 2; ++dx)
+				if (ox + dx >= 0 && oy + dy >= 0 && ox + dx < out.w && oy + dy < out.h)
+					out.setPixel(ox + dx, oy + dy, color);
+	};
+	auto rect = [&](const Common::Rect &r, uint32 color) {
+		if (r.isEmpty())
+			return;
+		for (float t = r.left; t <= r.right; t += 0.5f) {
+			plot(t, r.top, color);
+			plot(t, r.bottom, color);
+		}
+		for (float t = r.top; t <= r.bottom; t += 0.5f) {
+			plot(r.left, t, color);
+			plot(r.right, t, color);
+		}
+	};
+	Scene &scene = *_vm->_scene;
+	const Graphics::PixelFormat &f = out.format;
+	if (_roseTattooHiresWarp.valid()) {
+		const uint32 grey = hiresPack(f, 255, 128, 128, 128);
+		for (int y = 0; y <= _backBuffer1.h; y += 16)
+			for (float x = 0; x <= _backBuffer1.w; x += 1.0f)
+				plot(x, y, grey);
+		for (int x = 0; x <= _backBuffer1.w; x += 16)
+			for (float y = 0; y <= _backBuffer1.h; y += 1.0f)
+				plot(x, y, grey);
+	}
+	for (uint i = 0; i < scene._zones.size(); ++i)
+		rect(scene._zones[i], hiresPack(f, 255, 40, 120, 255));
+	for (uint i = 0; i < scene._exits.size(); ++i)
+		rect(scene._exits[i], hiresPack(f, 255, 255, 40, 40));
+	for (uint i = 0; i < scene._bgShapes.size(); ++i) {
+		const Object &o = scene._bgShapes[i];
+		if (o._type == INVALID || o._type == HIDDEN || o._type == REMOVE || o._type == HIDE_SHAPE)
+			continue;
+		rect(o._type == NO_SHAPE ? o.getNoShapeBounds() : o.getNewBounds(), hiresPack(f, 255, 40, 230, 40));
+	}
+}
+
 void Screen::blendRoseTattooHiresSceneSpriteLayer() {
 	if (_roseTattooHiresSceneSpriteLayer.empty())
 		return;
+	if (_roseTattooHiresWarp.valid() && _roseTattooHiresWarp.inverseScale() == _roseTattooHiresScale) {
+		blendRoseTattooHiresWarpedLayer(_roseTattooHiresSceneSpriteLayer, _roseTattooHiresSceneSpriteNativeRect, true);
+		return;
+	}
 
 	// The layer and provenance are in room coordinates. Scroll can change
 	// after the scene draw, so translate only now, at presentation time.
@@ -1227,6 +1360,10 @@ void Screen::clearRoseTattooHiresBakedSprites() {
 void Screen::blendRoseTattooHiresBakedSprites() {
 	if (_roseTattooHiresBakedSpriteLayer.empty())
 		return;
+	if (_roseTattooHiresWarp.valid() && _roseTattooHiresWarp.inverseScale() == _roseTattooHiresScale) {
+		blendRoseTattooHiresWarpedLayer(_roseTattooHiresBakedSpriteLayer, _roseTattooHiresBakedSpriteRect, false);
+		return;
+	}
 	const int scale = _roseTattooHiresScale;
 	const int scrollX = _currentScroll.x * scale, scrollY = _currentScroll.y * scale;
 	Common::Rect rect = _roseTattooHiresBakedSpriteRect;
@@ -1748,6 +1885,7 @@ void Screen::update() {
 	blendRoseTattooHiresTextLayer();
 #endif
 	blendRoseTattooHiresSpriteLayer();
+	drawRoseTattooWarpOverlay();
 	presentRoseTattooHiresFrame(outWidth, outHeight);
 }
 

@@ -416,7 +416,7 @@ void TattooScene::freeScene() {
 void TattooScene::doBgAnimCheckCursor() {
 	Events &events = *_vm->_events;
 	TattooUserInterface &ui = *(TattooUserInterface *)_vm->_ui;
-	Common::Point mousePos = events.mousePos();
+	Common::Point mousePos = events.sceneMousePos();
 
 	// If we're in Look Mode, make sure the cursor is the magnifying glass
 	if (ui._menuMode == LOOK_MODE && events.getCursor() != MAGNIFY)

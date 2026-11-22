@@ -54,6 +54,7 @@ MODULE_OBJS = \
 	fixed_text.o \
 	fonts.o \
 	hires_sidecar.o \
+	hires_warp.o \
 	rose_settings.o \
 	rose_options.o \
 	image_file.o \
