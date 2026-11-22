@@ -239,6 +239,20 @@ private:
 		const ImageFrame &nativeFrame, const Common::Rect &nativeRect, int nativeW, int nativeH, bool horizFlip,
 		bool trackNativeProvenance);
 	bool roseTattooSceneOwnsPixel(int screenX, int screenY) const;
+
+	// True-colour haze (rooms 7, 8, 18, 53, 68): the native mask pass remaps
+	// palette indices; the hires composite applies the same per-channel
+	// factors instead, feathered at hires resolution. World-size arrays of the
+	// post-haze native value and a hit flag, rebuilt by every mask pass.
+	Common::Array<byte> _roseTattooHazeExpected, _roseTattooHazeValid;
+	float _roseTattooHazeFactor[3];
+	bool _roseTattooHazeEnabled;
+	bool roseTattooHazePixel(int screenX, int screenY) const;
+	void applyRoseTattooHiresHaze();
+public:
+	void setRoseTattooHiresHazeFactors(bool enabled, float r, float g, float b);
+	void beginRoseTattooHiresHaze();
+	void markRoseTattooHiresHaze(int worldX, int worldY, byte before, byte after);
 protected:
 	SherlockEngine *_vm;
 	Surface _backBuffer;

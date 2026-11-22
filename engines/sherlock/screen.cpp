@@ -149,6 +149,8 @@ Screen::Screen(SherlockEngine *vm) : BaseSurface(
 			_roseTattooHiresSpriteFilter = kRoseTattooHiresSpriteEdge;
 	}
 	_roseTattooHiresJournalMode = false;
+	_roseTattooHazeEnabled = false;
+	_roseTattooHazeFactor[0] = _roseTattooHazeFactor[1] = _roseTattooHazeFactor[2] = 1.0f;
 	_roseTattooHiresDebugMode = vm->getGameID() == GType_RoseTattoo ? roseTattooHiresDebugModeFromEnv() : kRoseTattooHiresComposite;
 	const char *hazeFallback = vm->getGameID() == GType_RoseTattoo ? getenv("SCUMMVM_SHERLOCK_TATTOO_HAZE_NATIVE_FALLBACK") : nullptr;
 	_roseTattooHazeFallback = RoseTattooHazeFallback(hazeFallback && !strcmp(hazeFallback, "1"));
@@ -899,6 +901,99 @@ bool Screen::roseTattooSceneOwnsPixel(int screenX, int screenY) const {
 		getPixel(screenX, screenY) == _roseTattooHiresSceneSpriteExpectedNative[idx];
 }
 
+void Screen::setRoseTattooHiresHazeFactors(bool enabled, float r, float g, float b) {
+	_roseTattooHazeEnabled = enabled && _roseTattooHiresScale > 1 && !_roseTattooHiresFormat.isCLUT8() &&
+		!roseTattooHiresNativeReference();
+	_roseTattooHazeFactor[0] = r;
+	_roseTattooHazeFactor[1] = g;
+	_roseTattooHazeFactor[2] = b;
+	if (!_roseTattooHazeEnabled)
+		_roseTattooHazeValid.clear();
+}
+
+void Screen::beginRoseTattooHiresHaze() {
+	if (!_roseTattooHazeEnabled)
+		return;
+	const uint size = _backBuffer1.w * _backBuffer1.h;
+	if (_roseTattooHazeValid.size() != size) {
+		_roseTattooHazeValid.clear();
+		_roseTattooHazeValid.resize(size, 0);
+		_roseTattooHazeExpected.resize(size, 0);
+	} else {
+		Common::fill(_roseTattooHazeValid.begin(), _roseTattooHazeValid.end(), 0);
+	}
+}
+
+void Screen::markRoseTattooHiresHaze(int worldX, int worldY, byte before, byte after) {
+	if (!_roseTattooHazeEnabled || worldX < 0 || worldY < 0 || worldX >= _backBuffer1.w || worldY >= _backBuffer1.h)
+		return;
+	const uint idx = worldY * _backBuffer1.w + worldX;
+	if (idx >= _roseTattooHazeValid.size())
+		return;
+	_roseTattooHazeValid[idx] = 1;
+	_roseTattooHazeExpected[idx] = after;
+	// A replayed scene sprite under the haze keeps ownership of its pixel: the
+	// native value changes only because of the haze, which is reapplied below.
+	if (idx < _roseTattooHiresSceneSpriteExpectedValid.size() && _roseTattooHiresSceneSpriteExpectedValid[idx] &&
+			_roseTattooHiresSceneSpriteExpectedNative[idx] == before)
+		_roseTattooHiresSceneSpriteExpectedNative[idx] = after;
+}
+
+bool Screen::roseTattooHazePixel(int screenX, int screenY) const {
+	const int x = screenX + _currentScroll.x, y = screenY + _currentScroll.y;
+	if (!_roseTattooHazeEnabled || screenX < 0 || screenX >= SHERLOCK_SCREEN_WIDTH || screenY < 0 ||
+			screenY >= SHERLOCK_SCREEN_HEIGHT || x < 0 || x >= _backBuffer1.w || y < 0 || y >= _backBuffer1.h)
+		return false;
+	const uint idx = y * _backBuffer1.w + x;
+	return idx < _roseTattooHazeValid.size() && _roseTattooHazeValid[idx] &&
+		getPixel(screenX, screenY) == _roseTattooHazeExpected[idx];
+}
+
+void Screen::applyRoseTattooHiresHaze() {
+	if (!_roseTattooHazeEnabled || _roseTattooHazeValid.empty())
+		return;
+	const int scale = _roseTattooHiresScale;
+	// Native coverage of the visible screen, 1 where the haze still shows.
+	Common::Array<byte> cover(SHERLOCK_SCREEN_WIDTH * SHERLOCK_SCREEN_HEIGHT, 0);
+	bool any = false;
+	for (int y = 0; y < SHERLOCK_SCREEN_HEIGHT; ++y)
+		for (int x = 0; x < SHERLOCK_SCREEN_WIDTH; ++x)
+			if (roseTattooHazePixel(x, y)) {
+				cover[y * SHERLOCK_SCREEN_WIDTH + x] = 255;
+				any = true;
+			}
+	if (!any)
+		return;
+	const int outW = SHERLOCK_SCREEN_WIDTH * scale, outH = SHERLOCK_SCREEN_HEIGHT * scale;
+	for (int oy = 0; oy < outH; ++oy) {
+		// Bilinear coverage at the output pixel centre, in native pixel centres.
+		const HiresSpriteFilterAxis ay = hiresSpriteFilterAxis(oy, SHERLOCK_SCREEN_HEIGHT, outH, false);
+		const byte *row0 = &cover[ay.first * SHERLOCK_SCREEN_WIDTH];
+		const byte *row1 = &cover[ay.second * SHERLOCK_SCREEN_WIDTH];
+		for (int ox = 0; ox < outW; ++ox) {
+			const int nx = ox / scale;
+			const int ny = oy / scale;
+			if (!cover[ny * SHERLOCK_SCREEN_WIDTH + nx] && !row0[nx] && !row1[nx] &&
+					!(nx > 0 && (row0[nx - 1] || row1[nx - 1])) &&
+					!(nx + 1 < SHERLOCK_SCREEN_WIDTH && (row0[nx + 1] || row1[nx + 1])))
+				continue; // fast path: no haze nearby
+			const HiresSpriteFilterAxis ax = hiresSpriteFilterAxis(ox, SHERLOCK_SCREEN_WIDTH, outW, false);
+			const uint32 w = (row0[ax.first] * (256 - ax.fraction) + row0[ax.second] * ax.fraction) * (256 - ay.fraction) +
+				(row1[ax.first] * (256 - ax.fraction) + row1[ax.second] * ax.fraction) * ay.fraction;
+			const float k = w / (255.0f * 65536.0f);
+			if (k <= 0)
+				continue;
+			byte a, r, g, b;
+			_roseTattooHiresComposite.format.colorToARGB(_roseTattooHiresComposite.getPixel(ox, oy), a, r, g, b);
+			const float fr = 1 + k * (_roseTattooHazeFactor[0] - 1);
+			const float fg = 1 + k * (_roseTattooHazeFactor[1] - 1);
+			const float fb = 1 + k * (_roseTattooHazeFactor[2] - 1);
+			_roseTattooHiresComposite.setPixel(ox, oy, _roseTattooHiresComposite.format.ARGBToColor(255,
+				(byte)MIN(255.0f, r * fr + 0.5f), (byte)MIN(255.0f, g * fg + 0.5f), (byte)MIN(255.0f, b * fb + 0.5f)));
+		}
+	}
+}
+
 void Screen::blendRoseTattooHiresSceneSpriteLayer() {
 	if (_roseTattooHiresSceneSpriteLayer.empty())
 		return;
@@ -1437,6 +1532,8 @@ void Screen::update() {
 	// The scene layer was queued in the engine's draw order. Replay it now,
 	// before the remaining native foreground pixels, so native UI stays on top.
 	blendRoseTattooHiresSceneSpriteLayer();
+	// The haze pass runs after the scene draws and before the UI.
+	applyRoseTattooHiresHaze();
 
 	const byte *screenPixels = (const byte *)getPixels();
 	const byte *backgroundPixels = (const byte *)_backBuffer2.getPixels();
@@ -1457,7 +1554,7 @@ void Screen::update() {
 			// native pixels that still match the last recorded scene draw. A
 			// later tooltip/menu/widget changes the final native byte, and is
 			// therefore copied after the replay as intended.
-			if (roseTattooSceneOwnsPixel(x, y))
+			if (roseTattooSceneOwnsPixel(x, y) || roseTattooHazePixel(x, y))
 				continue;
 			const bool overlayPixel = _roseTattooHiresDebugMode == kRoseTattooHiresNative || nativePixel != bgRow[bgNativeX];
 			if (!overlayPixel)

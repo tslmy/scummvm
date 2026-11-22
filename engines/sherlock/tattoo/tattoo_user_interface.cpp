@@ -674,6 +674,7 @@ void TattooUserInterface::putMessage(const char *formatStr, ...) {
 
 void TattooUserInterface::setupBGArea(const byte cMap[Graphics::PALETTE_SIZE]) {
 	Scene &scene = *_vm->_scene;
+	_vm->_screen->setRoseTattooHiresHazeFactors(false, 1, 1, 1);
 
 	// This requires that there is a 16 grayscale palette sequence in the palette that goes from lighter
 	// to darker as the palette numbers go up. The last palette entry in that run is specified by _bgColor
@@ -683,6 +684,15 @@ void TattooUserInterface::setupBGArea(const byte cMap[Graphics::PALETTE_SIZE]) {
 
 	// If we're going to a scene with a haze special effect, initialize the translate table to lighten the colors
 	if (_mask != nullptr) {
+		// The hires compositor applies the same per-channel factors in true colour.
+		if (scene._currentScene == 8)
+			_vm->_screen->setRoseTattooHiresHazeFactors(true, 4.0f / 5, 3.0f / 4, 3.0f / 4);
+		else if (scene._currentScene == 7 || scene._currentScene == 18 || scene._currentScene == 53 ||
+				scene._currentScene == 68)
+			_vm->_screen->setRoseTattooHiresHazeFactors(true, 4.0f / 3, 4.0f / 3, 4.0f / 3);
+		else
+			_vm->_screen->setRoseTattooHiresHazeFactors(false, 1, 1, 1);
+
 		p = &_lookupTable1[0];
 
 		for (int idx = 0; idx < Graphics::PALETTE_COUNT; ++idx) {
@@ -851,6 +861,7 @@ void TattooUserInterface::drawMaskArea(bool mode) {
 	}
 
 	if (_mask != nullptr) {
+		screen.beginRoseTattooHiresHaze();
 		switch (scene._currentScene) {
 		case 7:
 			maskArea(*_mask, Common::Point(_maskOffset.x - SHERLOCK_SCREEN_WIDTH, 110));
@@ -926,7 +937,9 @@ void TattooUserInterface::maskArea(Common::SeekableReadStream &mask, const Commo
 				if (pixel && (pt.x + xp) >= screen._currentScroll.x && (pt.x + xp) < (screen._currentScroll.x + SHERLOCK_SCREEN_WIDTH)) {
 					if (_maskTraceFrame)
 						_maskTraceFrame->recordHit(pt.x + xp, pt.y + yp);
+					const byte before = *ptr;
 					*ptr = _lookupTable1[*ptr];
+					screen.markRoseTattooHiresHaze(pt.x + xp, pt.y + yp, before, *ptr);
 				}
 			}
 		}
