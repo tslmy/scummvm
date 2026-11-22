@@ -1014,11 +1014,46 @@ void Screen::applyRoseTattooHiresHaze() {
 	if (!any)
 		return;
 
-	// Full-strength per-channel tables for the interior.
+	// The masks are 1-px run-length rows: soften them (two separable box
+	// passes of radius 2, roughly a Gaussian) so smoke and fog read as wisps
+	// rather than stripes at hires.
+	{
+		Common::Array<uint16> tmp(nw * nh);
+		for (int pass = 0; pass < 2; ++pass) {
+			for (int y = 0; y < nh; ++y) {
+				int sum = 0;
+				for (int x = -2; x <= 2; ++x)
+					sum += cover[y * nw + CLIP(x, 0, nw - 1)];
+				for (int x = 0; x < nw; ++x) {
+					tmp[y * nw + x] = (uint16)sum;
+					sum += cover[y * nw + MIN(x + 3, nw - 1)] - cover[y * nw + MAX(x - 2, 0)];
+				}
+			}
+			for (int x = 0; x < nw; ++x) {
+				int sum = 0;
+				for (int y = -2; y <= 2; ++y)
+					sum += tmp[CLIP(y, 0, nh - 1) * nw + x];
+				for (int y = 0; y < nh; ++y) {
+					cover[y * nw + x] = (byte)((sum + 12) / 25);
+					sum += tmp[MIN(y + 3, nh - 1) * nw + x] - tmp[MAX(y - 2, 0) * nw + x];
+				}
+			}
+		}
+	}
+
+	// Full-strength per-channel tables. Darkening (room 8) is the original
+	// multiply. Lightening uses c*f / (1 + (f-1)*c): the same x f in the
+	// shadows, but highlights approach white instead of clipping to it (a
+	// plain x4/3 flattens a bright redrawn wall to pure white).
 	byte full[3][256];
-	for (int c = 0; c < 3; ++c)
-		for (int v = 0; v < 256; ++v)
-			full[c][v] = (byte)MIN(255.0f, v * _roseTattooHazeFactor[c] + 0.5f);
+	for (int c = 0; c < 3; ++c) {
+		const float f = _roseTattooHazeFactor[c];
+		for (int v = 0; v < 256; ++v) {
+			const float x = v / 255.0f;
+			const float y = f <= 1.0f ? x * f : x * f / (1.0f + (f - 1.0f) * x);
+			full[c][v] = (byte)CLIP(y * 255.0f + 0.5f, 0.0f, 255.0f);
+		}
+	}
 
 	if (_roseTattooHiresWarp.valid() && _roseTattooHiresWarp.inverseScale() == scale) {
 		// Warped room: haze follows the picture (nearest native coverage).
@@ -1032,9 +1067,11 @@ void Screen::applyRoseTattooHiresHaze() {
 				const int sx = x16 / 16 - _currentScroll.x, sy = y16 / 16 - _currentScroll.y;
 				if (sx < 0 || sy < 0 || sx >= nw || sy >= nh || !cover[sy * nw + sx])
 					continue;
+				const uint32 k = cover[sy * nw + sx];
 				byte a, r, g, b;
 				hiresUnpack(wout.format, wout.getPixel(ox, oy), a, r, g, b);
-				wout.setPixel(ox, oy, hiresPack(wout.format, 255, full[0][r], full[1][g], full[2][b]));
+				wout.setPixel(ox, oy, hiresPack(wout.format, 255, (r * (255 - k) + full[0][r] * k + 127) / 255,
+					(g * (255 - k) + full[1][g] * k + 127) / 255, (b * (255 - k) + full[2][b] * k + 127) / 255));
 			}
 		}
 		return;
@@ -1072,10 +1109,16 @@ void Screen::applyRoseTattooHiresHaze() {
 					uint32 *px32 = fmt.bytesPerPixel == 4 ? (uint32 *)out.getBasePtr(ox, oy) : nullptr;
 					hiresUnpack(fmt, px32 ? *px32 : out.getPixel(ox, oy), a, r, g, b);
 					if (lo == hi) {
-						// Interior: constant full haze.
-						r = full[0][r];
-						g = full[1][g];
-						b = full[2][b];
+						// Interior: constant coverage (full, or a uniform soft level).
+						if (lo == 255) {
+							r = full[0][r];
+							g = full[1][g];
+							b = full[2][b];
+						} else {
+							r = (byte)((r * (255 - lo) + full[0][r] * lo + 127) / 255);
+							g = (byte)((g * (255 - lo) + full[1][g] * lo + 127) / 255);
+							b = (byte)((b * (255 - lo) + full[2][b] * lo + 127) / 255);
+						}
 					} else {
 						// Edge: bilinear coverage at the output pixel centre.
 						const HiresSpriteFilterAxis ax = hiresSpriteFilterAxis(ox, nw, outW, false);
@@ -1083,12 +1126,12 @@ void Screen::applyRoseTattooHiresHaze() {
 						const byte *row1 = &cover[ay.second * nw];
 						const uint32 w = (row0[ax.first] * (256 - ax.fraction) + row0[ax.second] * ax.fraction) * (256 - ay.fraction) +
 							(row1[ax.first] * (256 - ax.fraction) + row1[ax.second] * ax.fraction) * ay.fraction;
-						const float k = w / (255.0f * 65536.0f);
-						if (k <= 0)
+						const uint32 k = (w + 32768) >> 16; // 0..255 coverage
+						if (!k)
 							continue;
-						r = (byte)MIN(255.0f, r * (1 + k * (_roseTattooHazeFactor[0] - 1)) + 0.5f);
-						g = (byte)MIN(255.0f, g * (1 + k * (_roseTattooHazeFactor[1] - 1)) + 0.5f);
-						b = (byte)MIN(255.0f, b * (1 + k * (_roseTattooHazeFactor[2] - 1)) + 0.5f);
+						r = (byte)((r * (255 - k) + full[0][r] * k + 127) / 255);
+						g = (byte)((g * (255 - k) + full[1][g] * k + 127) / 255);
+						b = (byte)((b * (255 - k) + full[2][b] * k + 127) / 255);
 					}
 					if (px32)
 						*px32 = hiresPack(fmt, 255, r, g, b);
