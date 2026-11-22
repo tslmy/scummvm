@@ -22,6 +22,7 @@
 #define FORBIDDEN_SYMBOL_EXCEPTION_getenv
 
 #include "sherlock/screen.h"
+#include "sherlock/rose_settings.h"
 #include "sherlock/hires_background.h"
 #include "sherlock/hires_native_reference.h"
 #include "sherlock/hires_resource.h"
@@ -72,12 +73,7 @@ Screen *Screen::init(SherlockEngine *vm) {
 }
 
 static int roseTattooHiresScaleFromEnv() {
-	const char *scaleEnv = getenv("SCUMMVM_SHERLOCK_TATTOO_HIRES_SCALE");
-	if (!scaleEnv || !*scaleEnv)
-		return 1;
-
-	int scale = atoi(scaleEnv);
-	return scale > 1 ? scale : 1;
+	return roseTattooHiresScaleSetting();
 }
 
 static int roseTattooHiresDebugModeFromEnv() {
@@ -98,15 +94,15 @@ static int roseTattooHiresDebugModeFromEnv() {
 }
 
 static Graphics::PixelFormat roseTattooHiresFormatFromEnv() {
-	const char *formatEnv = getenv("SCUMMVM_SHERLOCK_TATTOO_HIRES_FORMAT");
-	if (!formatEnv || !*formatEnv || !strcmp(formatEnv, "clut8"))
+	const Common::String format = roseTattooHiresFormatSetting();
+	if (format == "clut8")
 		return Graphics::PixelFormat::createFormatCLUT8();
-	if (!strcmp(formatEnv, "rgb565"))
+	if (format == "rgb565")
 		return Graphics::PixelFormat(2, 5, 6, 5, 0, 11, 5, 0, 0);
-	if (!strcmp(formatEnv, "rgba32"))
+	if (format == "rgba32")
 		return Graphics::PixelFormat::createFormatRGBA32();
 
-	warning("Unknown Rose Tattoo hires format '%s'; using clut8", formatEnv);
+	warning("Unknown Rose Tattoo hires format '%s'; using clut8", format.c_str());
 	return Graphics::PixelFormat::createFormatCLUT8();
 }
 
@@ -140,12 +136,12 @@ Screen::Screen(SherlockEngine *vm) : BaseSurface(
 			vm->getGameID() == GType_RoseTattoo ? 480 : 200, Graphics::PixelFormat::createFormatCLUT8()) {
 	_transitionSeed = 1;
 	_roseTattooHiresScale = vm->getGameID() == GType_RoseTattoo ? roseTattooHiresScaleFromEnv() : 1;
-	const char *spriteFilter = getenv("SCUMMVM_SHERLOCK_TATTOO_SPRITE_FILTER");
 	_roseTattooHiresSpriteFilter = kRoseTattooHiresSpriteNearest;
-	if (vm->getGameID() == GType_RoseTattoo && spriteFilter) {
-		if (!strcmp(spriteFilter, "bilinear"))
+	if (vm->getGameID() == GType_RoseTattoo) {
+		const Common::String spriteFilter = roseTattooSpriteFilterSetting();
+		if (spriteFilter == "bilinear")
 			_roseTattooHiresSpriteFilter = kRoseTattooHiresSpriteBilinear;
-		else if (!strcmp(spriteFilter, "edge"))
+		else if (spriteFilter == "edge")
 			_roseTattooHiresSpriteFilter = kRoseTattooHiresSpriteEdge;
 	}
 	_roseTattooHiresJournalMode = false;
@@ -326,7 +322,7 @@ bool Screen::loadRoseTattooHiresBackgroundOverride(int sceneNumber) {
 	if (_roseTattooHiresScale <= 1)
 		return false;
 
-	const char *overrideDir = getenv("SCUMMVM_SHERLOCK_TATTOO_ASSET_OVERRIDES");
+	const char *overrideDir = roseTattooAssetPackDir();
 	if (!overrideDir || !*overrideDir)
 		return false;
 
@@ -344,7 +340,7 @@ bool Screen::loadRoseTattooHiresMapOverride() {
 	if (_roseTattooHiresScale <= 1)
 		return false;
 
-	const char *overrideDir = getenv("SCUMMVM_SHERLOCK_TATTOO_ASSET_OVERRIDES");
+	const char *overrideDir = roseTattooAssetPackDir();
 	if (!overrideDir || !*overrideDir)
 		return false;
 
@@ -362,7 +358,7 @@ bool Screen::loadRoseTattooHiresCursorOverride(const Common::String &resourceNam
 	if (!canUseRoseTattooHiresKey(resourceName, IS_ROSE_TATTOO, IS_3DO))
 		return false;
 
-	const char *overrideDir = getenv("SCUMMVM_SHERLOCK_TATTOO_ASSET_OVERRIDES");
+	const char *overrideDir = roseTattooAssetPackDir();
 	if (!overrideDir || !*overrideDir)
 		return false;
 
@@ -462,7 +458,7 @@ const HiresResourceSidecar &Screen::getRoseTattooHiresSidecar(const Common::Stri
 		return it->_value;
 
 	HiresResourceSidecar sidecar;
-	const char *overrideDir = getenv("SCUMMVM_SHERLOCK_TATTOO_ASSET_OVERRIDES");
+	const char *overrideDir = roseTattooAssetPackDir();
 	if (overrideDir && *overrideDir && !resourceName.empty()) {
 		const Common::Path path(Common::String::format("%s/sprites/%s/frames.json", overrideDir,
 			resourceName.c_str()), '/');
@@ -481,7 +477,7 @@ const HiresResourceSidecar &Screen::getRoseTattooHiresSidecar(const Common::Stri
 
 void Screen::loadRoseTattooHiresRoomGrade(int sceneNumber) {
 	_roseTattooHiresRoomGrade = HiresRoomGrade();
-	const char *overrideDir = getenv("SCUMMVM_SHERLOCK_TATTOO_ASSET_OVERRIDES");
+	const char *overrideDir = roseTattooAssetPackDir();
 	if (!overrideDir || !*overrideDir || sceneNumber <= 0)
 		return;
 	const Common::String sceneDir = Common::String::format("%s/scene_%03d", overrideDir, sceneNumber);
@@ -849,8 +845,7 @@ void Screen::queueRoseTattooHiresPersonSprite(ImageFile *owner, const Common::St
 		int frameIndex, const ImageFrame &nativeFrame, const Common::Point &pt, bool horizFlip, int scaleVal) {
 	if (roseTattooHiresNativeReference())
 		return;
-	const char *mode = getenv("SCUMMVM_SHERLOCK_TATTOO_PALETTE_SAFE_SPRITES");
-	if (!IS_ROSE_TATTOO || IS_3DO || !mode || strcmp(mode, "1")) {
+	if (!IS_ROSE_TATTOO || IS_3DO || !roseTattooPaletteSafeSprites()) {
 		queueRoseTattooHiresSceneSprite(legacyResource, frameIndex, nativeFrame, pt, horizFlip, scaleVal);
 		return;
 	}
@@ -864,7 +859,7 @@ void Screen::queueRoseTattooHiresPersonSprite(ImageFile *owner, const Common::St
 	}
 
 	Common::String resource, discriminator;
-	const char *overrideDir = getenv("SCUMMVM_SHERLOCK_TATTOO_ASSET_OVERRIDES");
+	const char *overrideDir = roseTattooAssetPackDir();
 	if (_roseTattooHiresScale > 1 && !_roseTattooHiresFormat.isCLUT8() && owner && frameIndex >= 0 &&
 			overrideDir && *overrideDir && owner->indexOf(&nativeFrame) == frameIndex) {
 		const Common::String &source = owner->getPersonHiresIdentity();
@@ -1267,37 +1262,46 @@ Graphics::Font *Screen::getRoseTattooHiresFont(int pixelHeight) {
 	if (it != _roseTattooHiresFonts.end())
 		return it->_value;
 
-	const char *overrideDir = getenv("SCUMMVM_SHERLOCK_TATTOO_ASSET_OVERRIDES");
-	if (!overrideDir || !*overrideDir) {
+	// Font source, in order: an explicit font file; the pack's font (auto,
+	// pack); ScummVM's bundled serif from fonts.dat (auto, bundled). The
+	// bitmap choice, or no usable source, keeps the original bitmap text.
+	const RoseFontChoice choice = roseTattooFontChoice();
+	if (choice == kRoseFontBitmap) {
 		_roseTattooHiresFontMissing = true;
 		return nullptr;
 	}
+	Common::Array<Common::Path> candidates;
+	const Common::String fontFile = roseTattooFontFile();
+	if (!fontFile.empty())
+		candidates.push_back(Common::Path(fontFile, '/'));
+	const char *overrideDir = roseTattooAssetPackDir();
+	if (overrideDir && *overrideDir && choice != kRoseFontBundled)
+		candidates.push_back(Common::Path(Common::String::format("%s/fonts/hires_font.ttf", overrideDir), '/'));
 
-	Common::Path fontPath(Common::String::format("%s/fonts/hires_font.ttf", overrideDir), '/');
-	// Same rationale as the background/sprite override loaders above: avoid
-	// File::open()'s "node does not exist!" warning when the font override
-	// simply isn't present.
-	Common::FSNode fontNode(fontPath);
-	if (!fontNode.exists()) {
+	Graphics::Font *font = nullptr;
+	for (uint i = 0; i < candidates.size() && !font; ++i) {
+		// Same rationale as the background/sprite override loaders above:
+		// avoid File::open()'s "node does not exist!" warning.
+		Common::FSNode fontNode(candidates[i]);
+		Common::File file;
+		if (!fontNode.exists() || !file.open(fontNode))
+			continue;
+		// loadTTFFont() takes ownership of the stream and reads it fully up
+		// front; sizes are few (the FONT*.VGS heights times the scale).
+		font = Graphics::loadTTFFont(file.readStream(file.size()), DisposeAfterUse::YES,
+			pixelHeight, Graphics::kTTFSizeModeCharacter, 0, 0, Graphics::kTTFRenderModeNormal);
+		if (!font)
+			warning("Could not load Rose Tattoo hires text font at size %d: %s",
+				pixelHeight, candidates[i].toString(Common::Path::kNativeSeparator).c_str());
+	}
+	if (!font && choice != kRoseFontPack)
+		font = Graphics::loadTTFFontFromArchive("LiberationSerif-Regular.ttf", pixelHeight,
+			Graphics::kTTFSizeModeCharacter, 0, 0, Graphics::kTTFRenderModeNormal);
+	if (!font && _roseTattooHiresFonts.empty()) {
+		// Nothing loads at any size: keep the bitmap text for good.
 		_roseTattooHiresFontMissing = true;
 		return nullptr;
 	}
-
-	Common::File file;
-	if (!file.open(fontNode)) {
-		_roseTattooHiresFontMissing = true;
-		return nullptr;
-	}
-
-	// loadTTFFont() takes ownership of the stream (DisposeAfterUse::YES) and
-	// reads it fully up front, so a fresh Common::File per requested size is
-	// fine - sizes are few (bounded by the handful of distinct FONT*.VGS
-	// heights in the game, times _roseTattooHiresScale) and cached below.
-	Graphics::Font *font = Graphics::loadTTFFont(file.readStream(file.size()), DisposeAfterUse::YES,
-		pixelHeight, Graphics::kTTFSizeModeCharacter, 0, 0, Graphics::kTTFRenderModeNormal);
-	if (!font)
-		warning("Could not load Rose Tattoo hires text font at size %d: %s",
-			pixelHeight, fontPath.toString(Common::Path::kNativeSeparator).c_str());
 
 	_roseTattooHiresFonts[pixelHeight] = font;
 	return font;

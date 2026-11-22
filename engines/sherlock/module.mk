@@ -54,6 +54,8 @@ MODULE_OBJS = \
 	fixed_text.o \
 	fonts.o \
 	hires_sidecar.o \
+	rose_settings.o \
+	rose_options.o \
 	image_file.o \
 	image_file_stream.o \
 	inventory.o \

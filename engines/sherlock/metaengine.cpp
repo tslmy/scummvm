@@ -29,6 +29,7 @@
 #include "engines/advancedDetector.h"
 
 #include "sherlock/detection.h"
+#include "sherlock/rose_options.h"
 
 #include "backends/keymapper/action.h"
 #include "backends/keymapper/keymapper.h"
@@ -40,7 +41,8 @@
 
 namespace Sherlock {
 
-static const ADExtraGuiOptionsMap optionsList[] = {
+extern const ADExtraGuiOptionsMap optionsList[];
+const ADExtraGuiOptionsMap optionsList[] = {
 	{
 		GAMEOPTION_ORIGINAL_SAVES,
 		{
@@ -176,6 +178,14 @@ public:
 
 	const ADExtraGuiOptionsMap *getAdvancedExtraGuiOptions() const override {
 		return Sherlock::optionsList;
+	}
+
+	GUI::OptionsContainerWidget *buildEngineOptionsWidget(GUI::GuiObject *boss, const Common::String &name,
+			const Common::String &target) const override {
+		// Rose Tattoo gets the remaster settings (popups) next to the checkboxes.
+		if (checkGameGUIOption(GAMEOPTION_ROSE_REMASTER, ConfMan.get("guioptions", target)))
+			return new Sherlock::RoseTattooOptionsWidget(boss, name, target);
+		return AdvancedMetaEngine<Sherlock::SherlockGameDescription>::buildEngineOptionsWidget(boss, name, target);
 	}
 
 	/**

@@ -26,6 +26,7 @@
 #include <cstdio>
 
 #include "sherlock/scene.h"
+#include "sherlock/rose_settings.h"
 #include "sherlock/sherlock.h"
 #include "sherlock/screen.h"
 #include "sherlock/scalpel/scalpel.h"
@@ -66,7 +67,7 @@ static int closestPaletteEntry(const byte *palette, byte r, byte g, byte b) {
 static bool loadRoseTattooBackgroundOverride(Screen &screen, int sceneNumber) {
 	if (screen.roseTattooHiresNativeReference())
 		return false;
-	const char *overrideDir = getenv("SCUMMVM_SHERLOCK_TATTOO_ASSET_OVERRIDES");
+	const char *overrideDir = roseTattooAssetPackDir();
 	if (!overrideDir || !*overrideDir)
 		return false;
 

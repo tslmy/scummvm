@@ -25,6 +25,7 @@
 #include "engines/util.h"
 #include "graphics/pixelformat.h"
 #include "sherlock/tattoo/tattoo.h"
+#include "sherlock/rose_settings.h"
 #include "sherlock/tattoo/tattoo_fixed_text.h"
 #include "sherlock/tattoo/tattoo_resources.h"
 #include "sherlock/tattoo/tattoo_scene.h"
@@ -58,11 +59,10 @@ void TattooEngine::showOpening() {
 }
 
 void TattooEngine::initialize() {
-	const char *hiresScaleEnv = getenv("SCUMMVM_SHERLOCK_TATTOO_HIRES_SCALE");
-	const int hiresScale = hiresScaleEnv && *hiresScaleEnv ? atoi(hiresScaleEnv) : 1;
-	const char *hiresFormatEnv = getenv("SCUMMVM_SHERLOCK_TATTOO_HIRES_FORMAT");
-	const bool hiresRgb565 = hiresFormatEnv && !strcmp(hiresFormatEnv, "rgb565");
-	const bool hiresRgba32 = hiresFormatEnv && !strcmp(hiresFormatEnv, "rgba32");
+	const int hiresScale = roseTattooHiresScaleSetting();
+	const Common::String hiresFormat = roseTattooHiresFormatSetting();
+	const bool hiresRgb565 = hiresFormat == "rgb565";
+	const bool hiresRgba32 = hiresFormat == "rgba32";
 	if (hiresScale > 1) {
 		if (hiresRgb565) {
 			const Graphics::PixelFormat format(2, 5, 6, 5, 0, 11, 5, 0, 0);
