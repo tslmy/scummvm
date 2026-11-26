@@ -988,6 +988,30 @@ void Screen::markRoseTattooHiresHaze(int worldX, int worldY, byte before, byte a
 		_roseTattooHiresSceneSpriteExpectedNative[idx] = after;
 }
 
+void Screen::markRoseTattooHiresDarkened(const Common::Rect &r) {
+	if (_roseTattooHiresScale <= 1)
+		return;
+	const uint size = _backBuffer1.w * _backBuffer1.h;
+	if (_roseTattooDarkened.size() != size) {
+		_roseTattooDarkened.clear();
+		_roseTattooDarkened.resize(size, 0);
+	}
+	Common::Rect clip(r);
+	clip.clip(Common::Rect(0, 0, _backBuffer1.w, _backBuffer1.h));
+	for (int y = clip.top; y < clip.bottom; ++y) {
+		for (int x = clip.left; x < clip.right; ++x)
+			_roseTattooDarkened[y * _backBuffer1.w + x] = 1;
+	}
+}
+
+bool Screen::roseTattooDarkenedPixel(int screenX, int screenY) const {
+	const int x = screenX + _currentScroll.x, y = screenY + _currentScroll.y;
+	if (x < 0 || x >= _backBuffer1.w || y < 0 || y >= _backBuffer1.h)
+		return false;
+	const uint idx = y * _backBuffer1.w + x;
+	return idx < _roseTattooDarkened.size() && _roseTattooDarkened[idx];
+}
+
 bool Screen::roseTattooHazePixel(int screenX, int screenY) const {
 	const int x = screenX + _currentScroll.x, y = screenY + _currentScroll.y;
 	if (!_roseTattooHazeEnabled || screenX < 0 || screenX >= SHERLOCK_SCREEN_WIDTH || screenY < 0 ||
@@ -1381,6 +1405,8 @@ void Screen::clearRoseTattooHiresSceneSpriteLayer() {
 	if (!_roseTattooHiresSceneSpriteExpectedValid.empty())
 		Common::fill(_roseTattooHiresSceneSpriteExpectedValid.begin(), _roseTattooHiresSceneSpriteExpectedValid.end(), 0);
 	_roseTattooHiresSceneSpriteNativeRect = Common::Rect();
+	if (!_roseTattooDarkened.empty())
+		Common::fill(_roseTattooDarkened.begin(), _roseTattooDarkened.end(), 0);
 }
 
 void Screen::bakeRoseTattooHiresSceneSprite(const ImageFile *images, const ImageFrame &frame, const Common::Point &pt) {
@@ -1834,7 +1860,7 @@ void Screen::update() {
 				const int worldX = x + _currentScroll.x, worldY = y + _currentScroll.y;
 				// Remove the native sprite before replaying its replacement. This
 				// is essential for transparent edges even without a hires background.
-				if (roseTattooSceneOwnsPixel(x, y) && worldX >= 0 && worldX < _backBuffer2.w &&
+				if (!roseTattooDarkenedPixel(x, y) && roseTattooSceneOwnsPixel(x, y) && worldX >= 0 && worldX < _backBuffer2.w &&
 						worldY >= 0 && worldY < _backBuffer2.h)
 					nativePixel = _backBuffer2.getPixel(worldX, worldY);
 				const uint32 outputPixel = _roseTattooPalette.color(_roseTattooHiresFormat, nativePixel);
@@ -1914,9 +1940,11 @@ void Screen::update() {
 			// native pixels that still match the last recorded scene draw. A
 			// later tooltip/menu/widget changes the final native byte, and is
 			// therefore copied after the replay as intended.
-			if (roseTattooSceneOwnsPixel(x, y) || roseTattooHazePixel(x, y))
+			const bool darkened = roseTattooDarkenedPixel(x, y);
+			if (!darkened && (roseTattooSceneOwnsPixel(x, y) || roseTattooHazePixel(x, y)))
 				continue;
-			const bool overlayPixel = _roseTattooHiresDebugMode == kRoseTattooHiresNative || nativePixel != bgRow[bgNativeX];
+			const bool overlayPixel = darkened || _roseTattooHiresDebugMode == kRoseTattooHiresNative ||
+				nativePixel != bgRow[bgNativeX];
 			if (!overlayPixel)
 				continue;
 

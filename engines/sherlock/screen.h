@@ -246,6 +246,9 @@ private:
 	// factors instead, feathered at hires resolution. World-size arrays of the
 	// post-haze native value and a hit flag, rebuilt by every mask pass.
 	Common::Array<byte> _roseTattooHazeExpected, _roseTattooHazeValid;
+	// World-size flags set by markRoseTattooHiresDarkened().
+	Common::Array<byte> _roseTattooDarkened;
+	bool roseTattooDarkenedPixel(int screenX, int screenY) const;
 	float _roseTattooHazeFactor[3];
 	bool _roseTattooHazeEnabled;
 	bool roseTattooHazePixel(int screenX, int screenY) const;
@@ -267,6 +270,10 @@ public:
 	void setRoseTattooHiresHazeFactors(bool enabled, float r, float g, float b);
 	void beginRoseTattooHiresHaze();
 	void markRoseTattooHiresHaze(int worldX, int worldY, byte before, byte after);
+	// A translucent panel remapped these native pixels (world coordinates).
+	// Show them as they are until the next scene draw: some palette indices
+	// map to themselves, so the diff-based tests alone would miss them.
+	void markRoseTattooHiresDarkened(const Common::Rect &r);
 protected:
 	SherlockEngine *_vm;
 	Surface _backBuffer;

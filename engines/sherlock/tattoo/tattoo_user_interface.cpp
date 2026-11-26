@@ -1004,6 +1004,7 @@ void TattooUserInterface::makeBGArea(const Common::Rect &r) {
 			*ptr = _lookupTable[*ptr];
 	}
 
+	screen.markRoseTattooHiresDarkened(r);
 	screen.slamRect(r);
 }
 
