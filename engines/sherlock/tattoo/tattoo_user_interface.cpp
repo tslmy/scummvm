@@ -264,8 +264,25 @@ void TattooUserInterface::handleInput() {
 		_creditsWidget.initCredits();
 
 	// Check the mouse positioning
-	if (events.isCursorVisible())
+	if (events.isCursorVisible()) {
 		_bgFound = scene.findBgShape(mousePos);
+
+		// Rooms whose exit is an object (room 46's "Realexit", verb Exit) hit-test
+		// it with the warped point, and the warp can move the click off the
+		// original exit. Accept the unwarped point for exit objects only (LMY-104).
+		const Common::Point rawPos = events.mousePos();
+		if (_bgFound == -1 && rawPos != mousePos) {
+			const int rawFound = scene.findBgShape(rawPos);
+			if (rawFound >= 0 && rawFound < 1000) {
+				const Object &o = scene._bgShapes[rawFound];
+				bool isExit = o._description.equalsIgnoreCase("Exit");
+				for (int i = 0; i < 6 && !isExit; ++i)
+					isExit = o._use[i]._verb.equalsIgnoreCase("Exit");
+				if (isExit)
+					_bgFound = rawFound;
+			}
+		}
+	}
 	_personFound = _bgFound >= 1000;
 	_bgShape = (_bgFound != -1 && _bgFound < 1000) ? &scene._bgShapes[_bgFound] : nullptr;
 
