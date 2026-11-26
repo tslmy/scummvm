@@ -312,7 +312,7 @@ void WidgetTooltip::setText(const Common::String &strIn) {
 	}
 }
 
-void WidgetTooltip::refreshHiresText() {
+void WidgetTooltipBase::refreshHiresText() {
 #ifdef USE_FREETYPE2
 	if (_surface.empty() || _line1.empty())
 		return;

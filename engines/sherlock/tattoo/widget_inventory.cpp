@@ -46,6 +46,7 @@ void WidgetInventoryTooltip::setText(const Common::String &str) {
 	if (str.empty()) {
 		erase();
 		_surface.free();
+		_line1 = _line2 = "";
 		return;
 	}
 
@@ -103,18 +104,29 @@ void WidgetInventoryTooltip::setText(const Common::String &str) {
 	_bounds = Common::Rect(width, height);
 	_surface.create(width, height);
 	_surface.clear(TRANSPARENCY);
+	// Hires text is queued only from draw() via refreshHiresText(), as for
+	// WidgetTooltip::setText(); this pass only draws the bitmap surface.
+	_surface.clearHiresTextOrigin();
 
 	if (line2.empty()) {
 		_surface.writeFancyString(str, Common::Point(0, 0), BLACK, INFO_TOP);
+		_line1 = str;
+		_line2 = "";
+		_line1X = _line2X = _line2Y = 0;
 	} else {
 		int xp, yp;
 
 		xp = (_bounds.width() - _surface.stringWidth(line1) - 2) / 2;
 		_surface.writeFancyString(line1, Common::Point(xp, 0), BLACK, INFO_TOP);
+		_line1 = line1;
+		_line1X = xp;
 
 		xp = (_bounds.width() - _surface.stringWidth(line2) - 2) / 2;
 		yp = _surface.stringHeight(line2) + 2;
 		_surface.writeFancyString(line2, Common::Point(xp, yp), BLACK, INFO_TOP);
+		_line2 = line2;
+		_line2X = xp;
+		_line2Y = yp;
 	}
 }
 

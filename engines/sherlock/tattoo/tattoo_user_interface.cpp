@@ -597,6 +597,15 @@ void TattooUserInterface::displayObjectNames() {
 			if (exit.contains(mousePos))
 				_arrowZone = idx;
 		}
+
+		// With a room warp the redraw can shrink or shift an exit's edge of the
+		// room, so the warped point can miss a zone the player clicked where
+		// the original exit was (LMY-104). Accept the unwarped point as well.
+		const Common::Point rawPos = events.mousePos();
+		for (uint idx = 0; idx < scene._exits.size() && _arrowZone == -1 && rawPos != mousePos; ++idx) {
+			if (scene._exits[idx].contains(rawPos))
+				_arrowZone = idx;
+		}
 	}
 
 	_tooltipWidget.handleEvents();
