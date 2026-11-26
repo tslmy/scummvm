@@ -36,6 +36,8 @@ enum RoseFontChoice {
 #define ROSE_CONF_PALETTE_SAFE "rt_palette_safe_sprites" // bool
 #define ROSE_CONF_FONT "rt_font"                       // int: RoseFontChoice
 #define ROSE_CONF_FONT_FILE "rt_font_file"             // string: a .ttf/.otf file
+#define ROSE_CONF_INTERPOLATE "rt_interpolation"       // bool
+#define ROSE_CONF_CROSSFADE "rt_crossfade"             // bool
 
 // Output scale (>= 1).
 int roseTattooHiresScaleSetting();
@@ -49,6 +51,10 @@ Common::String roseTattooSpriteFilterSetting();
 // Resolved once per process.
 const char *roseTattooAssetPackDir();
 bool roseTattooPaletteSafeSprites();
+// Smooth movement between animation steps.
+bool roseTattooInterpolationSetting();
+// Cross-fade from one animation frame to the next.
+bool roseTattooCrossfadeSetting();
 RoseFontChoice roseTattooFontChoice();
 // Explicit font file (env SCUMMVM_SHERLOCK_TATTOO_FONT_FILE or the option);
 // empty when not set.

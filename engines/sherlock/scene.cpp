@@ -471,6 +471,7 @@ bool Scene::loadScene(const Common::Path &filename) {
 				loadRoseTattooBackgroundOverride(screen, _currentScene);
 				screen.loadRoseTattooHiresBackgroundOverride(_currentScene);
 				screen.clearRoseTattooHiresSceneSpriteLayer();
+				screen.resetRoseTattooAnim();
 				screen.clearRoseTattooHiresBakedSprites();
 
 				// Any hires tooltip text still registered from the room just

@@ -55,6 +55,7 @@ MODULE_OBJS = \
 	fonts.o \
 	hires_sidecar.o \
 	hires_warp.o \
+	rose_interpolation.o \
 	rose_settings.o \
 	rose_options.o \
 	image_file.o \

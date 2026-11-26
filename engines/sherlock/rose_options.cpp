@@ -59,6 +59,28 @@ const ADExtraGuiOptionsMap ROSE_CHECKBOXES[] = {
 			0
 		}
 	},
+	{
+		GAMEOPTION_ROSE_REMASTER,
+		{
+			_s("Smooth movement"),
+			_s("Move characters and objects smoothly between animation steps"),
+			ROSE_CONF_INTERPOLATE,
+			false,
+			0,
+			0
+		}
+	},
+	{
+		GAMEOPTION_ROSE_REMASTER,
+		{
+			_s("Cross-fade animation"),
+			_s("Blend from one animation frame to the next"),
+			ROSE_CONF_CROSSFADE,
+			false,
+			0,
+			0
+		}
+	},
 	AD_EXTRA_GUI_OPTIONS_TERMINATOR
 };
 

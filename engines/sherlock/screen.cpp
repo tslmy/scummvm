@@ -146,6 +146,10 @@ Screen::Screen(SherlockEngine *vm) : BaseSurface(
 			_roseTattooHiresSpriteFilter = kRoseTattooHiresSpriteEdge;
 	}
 	_roseTattooHiresJournalMode = false;
+	_roseTattooInterpolate = vm->getGameID() == GType_RoseTattoo && roseTattooInterpolationSetting();
+	_roseTattooCrossfade = vm->getGameID() == GType_RoseTattoo && roseTattooCrossfadeSetting();
+	_roseTattooAnimKey = nullptr;
+	_roseTattooAnimX = _roseTattooAnimY = 0;
 	_roseTattooHazeEnabled = false;
 	{
 		const char *overlay = vm->getGameID() == GType_RoseTattoo ? getenv("SCUMMVM_SHERLOCK_TATTOO_WARP_OVERLAY") : nullptr;
@@ -885,14 +889,82 @@ void Screen::queueRoseTattooHiresSceneSprite(const Common::String &resourceName,
 	// This call is made next to every native scene draw, in draw order. The
 	// layer is composited before the remaining native UI diff, so tooltip and
 	// menu pixels retain their normal priority.
-	Common::Rect queuedRect = blitRoseTattooHiresSpriteOverride(_roseTattooHiresSceneSpriteLayer,
+	// With smoothing on, the sprite is drawn on its own first, kept for the
+	// in-between pictures and then laid over the layer: the same pixels.
+	const bool smoothing = roseTattooSmoothing();
+	Common::Rect queuedRect = blitRoseTattooHiresSpriteOverride(
+		smoothing ? _roseTattooAnimScratch : _roseTattooHiresSceneSpriteLayer,
 		resourceName, frameIndex, nativeFrame, pt, horizFlip, scaleVal, true, opaqueNative, false, cacheDiscriminator);
+	if (!queuedRect.isEmpty() && smoothing)
+		recordRoseTattooAnimSprite(queuedRect, Common::String::format("%s/%d/%p/%d/%s", resourceName.c_str(),
+			frameIndex, (const void *)&nativeFrame, horizFlip ? 1 : 0, cacheDiscriminator.c_str()), pt);
+	_roseTattooAnimKey = nullptr;
 	if (!queuedRect.isEmpty()) {
 		if (_roseTattooHiresSceneSpriteNativeRect.isEmpty())
 			_roseTattooHiresSceneSpriteNativeRect = queuedRect;
 		else
 			_roseTattooHiresSceneSpriteNativeRect.extend(queuedRect);
 	}
+}
+
+bool Screen::roseTattooSmoothing() const {
+	return (_roseTattooInterpolate || _roseTattooCrossfade) && _roseTattooHiresScale > 1 &&
+		!_roseTattooHiresFormat.isCLUT8();
+}
+
+void Screen::setRoseTattooAnimEntity(const void *key, float x, float y) {
+	_roseTattooAnimKey = key;
+	_roseTattooAnimX = x;
+	_roseTattooAnimY = y;
+}
+
+void Screen::beginRoseTattooAnimStep() {
+	if (roseTattooSmoothing())
+		_roseTattooInterpolator.beginStep(g_system->getMillis());
+}
+
+void Screen::recordRoseTattooAnimSprite(const Common::Rect &drawn, const Common::String &signature,
+		const Common::Point &pt) {
+	Graphics::ManagedSurface &scratch = _roseTattooAnimScratch;
+	Graphics::ManagedSurface &layer = _roseTattooHiresSceneSpriteLayer;
+	if (layer.empty() || layer.w != scratch.w || layer.h != scratch.h) {
+		layer.create(scratch.w, scratch.h, scratch.format);
+		layer.clear(0);
+	}
+	Common::Rect rect = drawn;
+	rect.clip(scratch.getBounds());
+	if (rect.isEmpty())
+		return;
+
+	// Keep this sprite's own pixels: the frame it came from may be gone by the
+	// next step (cAnims stream into one buffer).
+	RoseTattooInterpolator::Sprite sprite;
+	sprite.key = _roseTattooAnimKey;
+	sprite.signature = signature;
+	sprite.x = _roseTattooAnimKey ? _roseTattooAnimX : pt.x;
+	sprite.y = _roseTattooAnimKey ? _roseTattooAnimY : pt.y;
+	sprite.rect = rect;
+	sprite.pixels = Common::SharedPtr<Graphics::ManagedSurface>(
+		new Graphics::ManagedSurface(rect.width(), rect.height(), scratch.format));
+	for (int y = 0; y < rect.height(); ++y) {
+		uint32 *src = (uint32 *)scratch.getBasePtr(rect.left, rect.top + y);
+		uint32 *dst = (uint32 *)layer.getBasePtr(rect.left, rect.top + y);
+		memcpy(sprite.pixels->getBasePtr(0, y), src, rect.width() * 4);
+		for (int x = 0; x < rect.width(); ++x)
+			dst[x] = hiresSpriteSourceOver(layer.format, src[x], dst[x]);
+		memset(src, 0, rect.width() * 4);
+	}
+	_roseTattooInterpolator.add(sprite);
+}
+
+bool Screen::roseTattooSceneAcceptsPixel(int screenX, int screenY) const {
+	if (roseTattooSceneOwnsPixel(screenX, screenY) || roseTattooHazePixel(screenX, screenY))
+		return true;
+	const int x = screenX + _currentScroll.x, y = screenY + _currentScroll.y;
+	if (screenX < 0 || screenX >= SHERLOCK_SCREEN_WIDTH || screenY < 0 || screenY >= SHERLOCK_SCREEN_HEIGHT ||
+			x < 0 || x >= _backBuffer2.w || y < 0 || y >= _backBuffer2.h)
+		return false;
+	return getPixel(screenX, screenY) == _backBuffer2.getPixel(x, y);
 }
 
 void Screen::queueRoseTattooHiresPersonSprite(ImageFile *owner, const Common::String &legacyResource,
@@ -1249,7 +1321,7 @@ void Screen::loadRoseTattooHiresWarp(int sceneNumber) {
 }
 
 void Screen::blendRoseTattooHiresWarpedLayer(const Graphics::ManagedSurface &layer, const Common::Rect &layerRect,
-		bool checkOwnership) {
+		bool checkOwnership, bool inBetween) {
 	if (layer.empty() || layerRect.isEmpty())
 		return;
 	const int scale = _roseTattooHiresScale;
@@ -1268,8 +1340,11 @@ void Screen::blendRoseTattooHiresWarpedLayer(const Graphics::ManagedSurface &lay
 			const uint32 pixel = ((const uint32 *)layer.getBasePtr(0, ly))[lx];
 			if (!((pixel >> layer.format.aShift) & 255))
 				continue;
-			if (checkOwnership && !roseTattooSceneOwnsPixel(x16 / 16 - _currentScroll.x, y16 / 16 - _currentScroll.y))
-				continue;
+			if (checkOwnership) {
+				const int sx = x16 / 16 - _currentScroll.x, sy = y16 / 16 - _currentScroll.y;
+				if (!(inBetween ? roseTattooSceneAcceptsPixel(sx, sy) : roseTattooSceneOwnsPixel(sx, sy)))
+					continue;
+			}
 			byte a, r, g, b, da, dr, dg, db;
 			hiresUnpack(layer.format, pixel, a, r, g, b);
 			hiresUnpack(out.format, out.getPixel(ox, oy), da, dr, dg, db);
@@ -1335,24 +1410,29 @@ void Screen::drawRoseTattooWarpOverlay() {
 void Screen::blendRoseTattooHiresSceneSpriteLayer() {
 	if (_roseTattooHiresSceneSpriteLayer.empty())
 		return;
+	const bool inBetween = roseTattooSmoothing() && _roseTattooInterpolator.compose(g_system->getMillis(),
+		_roseTattooInterpolate, _roseTattooCrossfade, _roseTattooHiresScale, _roseTattooHiresSceneSpriteLayer,
+		_roseTattooHiresSceneSpriteNativeRect, _roseTattooAnimLayer, _roseTattooAnimRect);
+	const Graphics::ManagedSurface &layer = inBetween ? _roseTattooAnimLayer : _roseTattooHiresSceneSpriteLayer;
+	const Common::Rect layerRect = inBetween ? _roseTattooAnimRect : _roseTattooHiresSceneSpriteNativeRect;
 	if (_roseTattooHiresWarp.valid() && _roseTattooHiresWarp.inverseScale() == _roseTattooHiresScale) {
-		blendRoseTattooHiresWarpedLayer(_roseTattooHiresSceneSpriteLayer, _roseTattooHiresSceneSpriteNativeRect, true);
+		blendRoseTattooHiresWarpedLayer(layer, layerRect, true, inBetween);
 		return;
 	}
 
 	// The layer and provenance are in room coordinates. Scroll can change
 	// after the scene draw, so translate only now, at presentation time.
-	Common::Rect spriteRect = _roseTattooHiresSceneSpriteNativeRect;
-	spriteRect.clip(_roseTattooHiresSceneSpriteLayer.getBounds());
+	Common::Rect spriteRect = layerRect;
+	spriteRect.clip(layer.getBounds());
 	const int scale = _roseTattooHiresScale;
 	const int scrollX = _currentScroll.x * scale, scrollY = _currentScroll.y * scale;
 	spriteRect.clip(Common::Rect(scrollX, scrollY, scrollX + SHERLOCK_SCREEN_WIDTH * scale,
 		scrollY + SHERLOCK_SCREEN_HEIGHT * scale));
-	const Graphics::PixelFormat &layerFormat = _roseTattooHiresSceneSpriteLayer.format;
+	const Graphics::PixelFormat &layerFormat = layer.format;
 	Graphics::ManagedSurface &out = _roseTattooHiresComposite;
 	const bool direct32 = out.format.bytesPerPixel == 4;
 	for (int y = spriteRect.top; y < spriteRect.bottom; ++y) {
-		const uint32 *layerRow = (const uint32 *)_roseTattooHiresSceneSpriteLayer.getBasePtr(0, y);
+		const uint32 *layerRow = (const uint32 *)layer.getBasePtr(0, y);
 		const int screenY = y - scrollY;
 		uint32 *outRow = direct32 ? (uint32 *)out.getBasePtr(0, screenY) : nullptr;
 		int ownedNativeX = -1;
@@ -1365,7 +1445,8 @@ void Screen::blendRoseTattooHiresSceneSpriteLayer() {
 			const int screenX = x - scrollX;
 			if (screenX / scale != ownedNativeX) {
 				ownedNativeX = screenX / scale;
-				owned = roseTattooSceneOwnsPixel(ownedNativeX, screenY / scale);
+				owned = inBetween ? roseTattooSceneAcceptsPixel(ownedNativeX, screenY / scale) :
+					roseTattooSceneOwnsPixel(ownedNativeX, screenY / scale);
 			}
 			if (!owned)
 				continue;

@@ -75,6 +75,7 @@ static void queueRoseTattooHiresObjectOverride(Screen &screen, Object &obj) {
 	Common::String resourceName;
 	int frameIndex = -1;
 	resolveRoseTattooHiresSpriteOverride(obj._images, obj._imageFrame, resourceName, frameIndex);
+	screen.setRoseTattooAnimEntity(&obj, obj._position.x, obj._position.y);
 	// Queue every scene draw, even when no generated file exists. Screen then
 	// replays the native frame in this exact draw slot, instead of applying it
 	// later as a whole-screen foreground diff.
@@ -99,6 +100,8 @@ static void queueRoseTattooHiresPersonOverride(Screen &screen, TattooPerson &p,
 	ImageFile *owner = roseTattooPersonFrameOwner(p._images, p._altImages, p._imageFrame, frameIndex);
 	if (owner)
 		resourceName = owner->getHiresResourceName();
+	screen.setRoseTattooAnimEntity(&p, (float)p._position.x / FIXED_INT_MULTIPLIER,
+		(float)p._position.y / FIXED_INT_MULTIPLIER);
 	screen.queueRoseTattooHiresPersonSprite(owner, resourceName, frameIndex, *p._imageFrame, pt, horizFlip, scaleVal);
 }
 
@@ -137,6 +140,7 @@ void TattooScene::queueHiresCAnim(Screen &screen) {
 	// CAnimations are streamed separately from the room ImageFile array.
 	// Their optional override key uses the zero-based animation and frame IDs.
 	Common::String resource = Common::String::format("scene_%03d/canim_%03d", _currentScene, _activeCAnimNumber);
+	screen.setRoseTattooAnimEntity(&_activeCAnim, _activeCAnim._position.x, _activeCAnim._position.y);
 	screen.queueRoseTattooHiresSceneSprite(resource, _activeCAnim.frameNumber(), _activeCAnim._imageFrame,
 		_activeCAnim._position, (_activeCAnim._flags & 4) >> 1, _activeCAnim._scaleVal);
 }
@@ -215,6 +219,7 @@ void TattooScene::drawAllShapes() {
 	// appear, disappear or move every single frame, so there's no
 	// incremental erase bookkeeping: just wipe and fully requeue below.
 	screen.clearRoseTattooHiresSceneSpriteLayer();
+	screen.beginRoseTattooAnimStep();
 
 	// Draw all objects and animations that are set to behind
 	screen.setDisplayBounds(Common::Rect(0, 0, SHERLOCK_SCREEN_WIDTH, SHERLOCK_SCREEN_HEIGHT));

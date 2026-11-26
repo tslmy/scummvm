@@ -33,6 +33,7 @@
 #include "sherlock/hires_sidecar.h"
 #include "sherlock/hires_warp.h"
 #include "sherlock/image_file.h"
+#include "sherlock/rose_interpolation.h"
 #include "sherlock/surface.h"
 #include "sherlock/resources.h"
 #include "sherlock/saveload.h"
@@ -240,6 +241,21 @@ private:
 		const ImageFrame &nativeFrame, const Common::Rect &nativeRect, int nativeW, int nativeH, bool horizFlip,
 		bool trackNativeProvenance);
 	bool roseTattooSceneOwnsPixel(int screenX, int screenY) const;
+	// For an in-between picture, which may lie away from this step's sprites:
+	// also where the native screen shows nothing but the scene.
+	bool roseTattooSceneAcceptsPixel(int screenX, int screenY) const;
+
+	// Presentation-only smoothing between animation steps (see
+	// rose_interpolation.h), off unless a game option asks for it.
+	bool _roseTattooInterpolate, _roseTattooCrossfade;
+	RoseTattooInterpolator _roseTattooInterpolator;
+	const void *_roseTattooAnimKey;
+	float _roseTattooAnimX, _roseTattooAnimY;
+	Graphics::ManagedSurface _roseTattooAnimScratch, _roseTattooAnimLayer;
+	Common::Rect _roseTattooAnimRect;
+	bool roseTattooSmoothing() const;
+	void recordRoseTattooAnimSprite(const Common::Rect &drawn, const Common::String &signature,
+		const Common::Point &pt);
 
 	// True-colour haze (rooms 7, 8, 18, 53, 68): the native mask pass remaps
 	// palette indices; the hires composite applies the same per-channel
@@ -258,7 +274,7 @@ private:
 	void loadRoseTattooHiresWarp(int sceneNumber);
 	// Blend a world-space (logic) layer into the composite through the warp.
 	void blendRoseTattooHiresWarpedLayer(const Graphics::ManagedSurface &layer, const Common::Rect &layerRect,
-		bool checkOwnership);
+		bool checkOwnership, bool inBetween = false);
 	void drawRoseTattooWarpOverlay();
 	// Palette fades: per-channel tone curve from the room palette (_cMap) to
 	// the live palette, applied to the hires background and scene sprites.
@@ -579,6 +595,13 @@ public:
 	 * incremental per-rect erasing, is used here).
 	 */
 	void clearRoseTattooHiresSceneSpriteLayer();
+
+	/** Names the entity whose scene sprite is queued next, and where it stands (native room px). */
+	void setRoseTattooAnimEntity(const void *key, float x, float y);
+	/** All scene sprites are about to be queued again for a new animation step. */
+	void beginRoseTattooAnimStep();
+	/** Forget smoothing history (room change). */
+	void resetRoseTattooAnim() { _roseTattooInterpolator.reset(); }
 	void bakeRoseTattooHiresSceneSprite(const ImageFile *images, const ImageFrame &frame, const Common::Point &pt);
 	void clearRoseTattooHiresBakedSprites();
 

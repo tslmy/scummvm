@@ -96,6 +96,18 @@ bool roseTattooPaletteSafeSprites() {
 	return hasOption(ROSE_CONF_PALETTE_SAFE) && ConfMan.getBool(ROSE_CONF_PALETTE_SAFE);
 }
 
+bool roseTattooInterpolationSetting() {
+	if (const char *env = envValue("SCUMMVM_SHERLOCK_TATTOO_INTERPOLATE"))
+		return !strcmp(env, "1");
+	return hasOption(ROSE_CONF_INTERPOLATE) && ConfMan.getBool(ROSE_CONF_INTERPOLATE);
+}
+
+bool roseTattooCrossfadeSetting() {
+	if (const char *env = envValue("SCUMMVM_SHERLOCK_TATTOO_CROSSFADE"))
+		return !strcmp(env, "1");
+	return hasOption(ROSE_CONF_CROSSFADE) && ConfMan.getBool(ROSE_CONF_CROSSFADE);
+}
+
 RoseFontChoice roseTattooFontChoice() {
 	if (const char *env = envValue("SCUMMVM_SHERLOCK_TATTOO_FONT")) {
 		if (!strcmp(env, "pack"))
