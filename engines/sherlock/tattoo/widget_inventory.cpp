@@ -571,8 +571,10 @@ void WidgetInventory::drawInventory() {
 	// visible (and where) can change between calls (scrolling, taking/
 	// using/dropping items), and the sprite layer isn't auto-cleared every
 	// frame (see Screen::_roseTattooHiresSpriteLayer's declaration).
-	screen.clearRoseTattooHiresSpriteRect(Common::Rect(_bounds.left, _bounds.top,
-		_bounds.left + _bounds.width(), _bounds.top + _bounds.height()));
+	// The sprite layer is screen-sized, while _bounds is in scroll space.
+	Common::Rect screenBounds = _bounds;
+	screenBounds.translate(-screen._currentScroll.x, -screen._currentScroll.y);
+	screen.clearRoseTattooHiresSpriteRect(screenBounds);
 
 	// TODO: Refactor _invIndex into this widget class
 	for (int idx = 0, itemId = inv._invIndex; idx < NUM_INVENTORY_SHOWN; ++idx, ++itemId) {
@@ -600,7 +602,7 @@ void WidgetInventory::drawInventory() {
 			// isn't active or no override asset exists for this item.
 			const Common::String resourceName = inv._invShapes[idx]->getHiresResourceName();
 			screen.queueRoseTattooHiresSprite(resourceName, 0, img,
-				Common::Point(_bounds.left + imgPt.x, _bounds.top + imgPt.y));
+				Common::Point(screenBounds.left + imgPt.x, screenBounds.top + imgPt.y));
 		}
 	}
 
@@ -795,7 +797,7 @@ void WidgetInventory::banishWindow() {
 	// Erase any queued hires item-icon overrides (see drawInventory()) -
 	// this window is closing, so nothing should be left behind in the
 	// persistent sprite layer.
-	_vm->_screen->clearRoseTattooHiresSpriteRect(_bounds);
+	_vm->_screen->clearRoseTattooHiresSpriteLayer();
 
 	Common::Keymapper *keymapper = g_system->getEventManager()->getKeymapper();
 	keymapper->getKeymap("tattoo-scrolling")->setEnabled(false);

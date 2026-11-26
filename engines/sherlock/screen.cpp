@@ -31,6 +31,7 @@
 #include "sherlock/scalpel/scalpel_screen.h"
 #include "sherlock/scalpel/3do/scalpel_3do_screen.h"
 #include "sherlock/tattoo/tattoo_screen.h"
+#include "sherlock/tattoo/tattoo_user_interface.h"
 #include "common/file.h"
 #include "common/fs.h"
 #include "common/system.h"
@@ -1502,11 +1503,19 @@ void Screen::blendRoseTattooHiresSpriteLayer() {
 	// blend the crisp override on top of.
 	Common::Rect spriteRect = _roseTattooHiresSpriteNativeRect;
 	spriteRect.clip(_roseTattooHiresSpriteLayer.getBounds());
+
+	// The layer holds inventory icons only. What is drawn above them (verb
+	// menu, hover names) is already in the composite as native pixels.
+	const Tattoo::TattooUserInterface *ui = IS_ROSE_TATTOO ?
+		static_cast<const Tattoo::TattooUserInterface *>(_vm->_ui) : nullptr;
+
 	for (int y = spriteRect.top; y < spriteRect.bottom; ++y) {
 		for (int x = spriteRect.left; x < spriteRect.right; ++x) {
 			uint8 a, r, g, b;
 			_roseTattooHiresSpriteLayer.format.colorToARGB(_roseTattooHiresSpriteLayer.getPixel(x, y), a, r, g, b);
 			if (a == 0)
+				continue;
+			if (ui && ui->coversInventoryIcon(Common::Point(x / _roseTattooHiresScale, y / _roseTattooHiresScale)))
 				continue;
 
 			uint8 dstA, dstR, dstG, dstB;
@@ -1836,13 +1845,11 @@ void Screen::update() {
 			}
 		}
 
-#ifdef USE_FREETYPE2
 		blendRoseTattooHiresSceneSpriteLayer();
-		blendRoseTattooHiresTextLayer();
-#else
-		blendRoseTattooHiresSceneSpriteLayer();
-#endif
 		blendRoseTattooHiresSpriteLayer();
+#ifdef USE_FREETYPE2
+		blendRoseTattooHiresTextLayer();
+#endif
 		presentRoseTattooHiresFrame(outWidth, outHeight);
 		return;
 	}
@@ -1871,13 +1878,11 @@ void Screen::update() {
 	}
 
 	if (_roseTattooHiresDebugMode == kRoseTattooHiresBackground) {
-#ifdef USE_FREETYPE2
 		blendRoseTattooHiresSceneSpriteLayer();
-		blendRoseTattooHiresTextLayer();
-#else
-		blendRoseTattooHiresSceneSpriteLayer();
-#endif
 		blendRoseTattooHiresSpriteLayer();
+#ifdef USE_FREETYPE2
+		blendRoseTattooHiresTextLayer();
+#endif
 		presentRoseTattooHiresFrame(outWidth, outHeight);
 		return;
 	}
@@ -1924,10 +1929,11 @@ void Screen::update() {
 		}
 	}
 
+	// Text goes above the icons: hover names overlap them.
+	blendRoseTattooHiresSpriteLayer();
 #ifdef USE_FREETYPE2
 	blendRoseTattooHiresTextLayer();
 #endif
-	blendRoseTattooHiresSpriteLayer();
 	drawRoseTattooWarpOverlay();
 	presentRoseTattooHiresFrame(outWidth, outHeight);
 }

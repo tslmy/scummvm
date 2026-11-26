@@ -122,6 +122,17 @@ public:
 	virtual void draw();
 
 	/**
+	 * The area covered by the widget, in scroll (world) space
+	 */
+	const Common::Rect &getBounds() const { return _bounds; }
+
+	/**
+	 * Whether the widget currently shows a non-transparent pixel at the
+	 * given scroll space position
+	 */
+	bool coversPixel(const Common::Point &pt) const;
+
+	/**
 	 * Used by some descendents to check for keys to mouse the mouse within the dialog
 	 */
 	void checkTabbingKeys(int numOptions);

@@ -88,6 +88,9 @@ private:
 	int _invSelect, _oldInvSelect;
 	WidgetInventoryTooltip _tooltipWidget;
 	WidgetInventoryVerbs _verbList;
+public:
+	bool tooltipCoversPixel(const Common::Point &pt) const { return _tooltipWidget.coversPixel(pt); }
+private:
 	bool _swapItems;
 	Surface _menuSurface;
 	Common::String _invTarget;

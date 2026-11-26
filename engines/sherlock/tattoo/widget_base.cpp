@@ -104,6 +104,13 @@ void WidgetBase::erase() {
 	}
 }
 
+bool WidgetBase::coversPixel(const Common::Point &pt) const {
+	if (!_oldBounds.contains(pt) || _surface.empty())
+		return false;
+	const int x = pt.x - _oldBounds.left, y = pt.y - _oldBounds.top;
+	return x < _surface.width() && y < _surface.height() && _surface.getPixel(x, y) != TRANSPARENCY;
+}
+
 void WidgetBase::draw() {
 	Screen &screen = *_vm->_screen;
 

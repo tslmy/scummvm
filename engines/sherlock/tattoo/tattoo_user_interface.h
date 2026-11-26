@@ -249,6 +249,14 @@ public:
 	void drawInterface(int bufferNum = 3) override;
 
 	/**
+	 * Whether the native pixel at a screen position is drawn above the
+	 * inventory icons: by a window stacked over the inventory (e.g. its verb
+	 * menu) or by a hover name in the bitmap font. The hires icons are
+	 * composited after the native pixels, so they must leave it alone.
+	 */
+	bool coversInventoryIcon(const Common::Point &screenPt) const;
+
+	/**
 	 * Clear any active text window
 	 */
 	void clearWindow() override;

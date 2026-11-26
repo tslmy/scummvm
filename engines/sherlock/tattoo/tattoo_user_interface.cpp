@@ -338,6 +338,26 @@ void TattooUserInterface::drawInterface(int bufferNum) {
 		screen._flushScreen = true;
 }
 
+bool TattooUserInterface::coversInventoryIcon(const Common::Point &screenPt) const {
+	Screen &screen = *_vm->_screen;
+	const Common::Point pt = screenPt + screen._currentScroll;
+	bool aboveInventory = false;
+
+	// _widgets is kept in draw order
+	for (Common::List<WidgetBase *>::const_iterator i = _widgets.begin(); i != _widgets.end(); ++i) {
+		if (aboveInventory && (*i)->getBounds().contains(pt))
+			return true;
+		aboveInventory |= *i == &_inventoryWidget;
+	}
+
+#ifdef USE_FREETYPE2
+	// TTF hover names skip the native blit and are blended above the icons
+	if (screen.canUseRoseTattooHiresText(screen.fontHeight()))
+		return false;
+#endif
+	return _tooltipWidget.coversPixel(pt) || _inventoryWidget.tooltipCoversPixel(pt);
+}
+
 void TattooUserInterface::doBgAnimRestoreUI() {
 	TattooScene &scene = *((TattooScene *)_vm->_scene);
 	Screen &screen = *_vm->_screen;
