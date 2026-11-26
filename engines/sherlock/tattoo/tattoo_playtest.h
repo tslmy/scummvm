@@ -27,6 +27,7 @@
 #include "common/file.h"
 #include "common/rect.h"
 #include "common/str.h"
+#include "graphics/managed_surface.h"
 
 namespace Sherlock {
 
@@ -56,7 +57,7 @@ private:
 	enum Op {
 		OP_WAIT, OP_WAITFRAMES, OP_MOVE, OP_DOWN, OP_UP, OP_CLICK, OP_RCLICK,
 		OP_KEY, OP_WAITIDLE, OP_WAITSCENE, OP_WAITCANIM, OP_VERB, OP_OBJECTS,
-		OP_DUMP, OP_LOG, OP_QUIT
+		OP_DUMP, OP_DUMPFRAMES, OP_LOG, OP_QUIT
 	};
 
 	struct Command {
@@ -86,6 +87,13 @@ private:
 	Common::DumpFile *_log;
 	Common::Point _mouse;		// last scripted mouse position (native screen coords)
 
+	// State of the "dumpframes" command in flight
+	bool _capturing;
+	uint32 _captureLastFrame;	// last frame counter seen while capturing
+	Common::Array<Graphics::ManagedSurface *> _captureFrames;
+	Common::Array<uint32> _captureFrameCounters;
+	Common::Array<uint32> _captureMillis;
+
 	bool parse(const Common::String &path);
 	bool parseKey(const Common::String &name, Common::KeyState &key) const;
 	void fail(const Command &cmd, const Common::String &message);
@@ -102,6 +110,7 @@ private:
 	Common::String stateJson() const;
 	void emit(const Common::String &kind, const Common::String &json);
 	bool dump(const Command &cmd);
+	bool dumpFrames(const Command &cmd);
 	void listObjects();
 public:
 	Playtest(SherlockEngine *vm);

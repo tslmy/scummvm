@@ -74,7 +74,8 @@ static bool parseInt(const Common::String &s, int &value) {
 
 Playtest::Playtest(SherlockEngine *vm) : _vm(vm), _index(0), _failed(false), _finished(false),
 		_waiting(false), _waitStartMillis(0), _waitStartFrame(0), _stableFrames(0),
-		_lastStableFrame(0), _log(nullptr), _mouse(-1, -1) {
+		_lastStableFrame(0), _log(nullptr), _mouse(-1, -1), _capturing(false),
+		_captureLastFrame(0) {
 }
 
 Playtest::~Playtest() {
@@ -243,6 +244,14 @@ bool Playtest::parse(const Common::String &path) {
 				const char c = cmd._text[i];
 				ok = Common::isAlnum(c) || c == '-' || c == '_' || (c == '.' && i > 0);
 			}
+		} else if (op == "dumpframes") {
+			cmd._op = OP_DUMPFRAMES;
+			cmd._text = args > 0 ? tok[1] : "";
+			ok = args == 2 && !_dumpDir.empty() && parseInt(tok[2], cmd._y) && cmd._y >= 1 && cmd._y <= 120;
+			for (uint i = 0; ok && i < cmd._text.size(); ++i) {
+				const char c = cmd._text[i];
+				ok = Common::isAlnum(c) || c == '-' || c == '_' || (c == '.' && i > 0);
+			}
 		} else if (op == "log") {
 			cmd._op = OP_LOG;
 			cmd._text = rest;
@@ -373,6 +382,67 @@ bool Playtest::dump(const Command &cmd) {
 	emit("DUMP", Common::String::format("{\"name\":%s,\"file\":%s,\"line\":%d,\"source\":%s,\"state\":%s}",
 		jsonString(cmd._text).c_str(), jsonString(file).c_str(), cmd._line,
 		hires ? "\"hires_composite\"" : "\"native_screen\"", stateJson().c_str()));
+	return true;
+}
+
+bool Playtest::dumpFrames(const Command &cmd) {
+	// Fast capture: copy the presented hires composite while the game
+	// runs, encode the PNG files only once all frames are captured.
+	if (!_capturing) {
+		if (_vm->_screen->roseTattooHiresScale() <= 1 || _vm->_screen->roseTattooHiresComposite().empty()) {
+			fail(cmd, "dumpframes requires the hires composite (set the remastered art scale above 1)");
+			return false;
+		}
+		_capturing = true;
+		_captureLastFrame = _vm->_events->getFrameCounter();
+	}
+	const uint32 frame = _vm->_events->getFrameCounter();
+	if (frame == _captureLastFrame)
+		return false;
+	{
+		_captureLastFrame = frame;
+		const Graphics::ManagedSurface &composite = _vm->_screen->roseTattooHiresComposite();
+		Graphics::ManagedSurface *copy = new Graphics::ManagedSurface(composite.w, composite.h, composite.format);
+		copy->copyFrom(composite);
+		_captureFrames.push_back(copy);
+		_captureFrameCounters.push_back(frame);
+		_captureMillis.push_back(g_system->getMillis());
+		if (_captureFrames.size() < (uint)cmd._y)
+			return false;
+	}
+
+	// All frames captured: encode now, then free the copies.
+	for (uint i = 0; i < _captureFrames.size(); ++i) {
+		const Common::String file = _dumpDir + "/" + cmd._text + "_" + Common::String::format("%03u", i) + ".png";
+		Common::DumpFile out;
+		bool written;
+		if (!out.open(Common::FSNode(Common::Path(file, '/')))) {
+			fail(cmd, "cannot write " + file);
+			return false;
+		}
+		written = Image::writePNG(out, _captureFrames[i]->rawSurface());
+		out.finalize();
+		if (!written) {
+			fail(cmd, "cannot write " + file);
+			return false;
+		}
+	}
+	for (uint i = 0; i < _captureFrames.size(); ++i)
+		delete _captureFrames[i];
+	_captureFrames.clear();
+
+	Common::String frames = "[";
+	for (uint i = 0; i < _captureFrameCounters.size(); ++i)
+		frames += Common::String::format("%s{\"frame\":%u,\"millis\":%u}",
+			i ? "," : "", _captureFrameCounters[i], _captureMillis[i]);
+	frames += "]";
+	_captureFrameCounters.clear();
+	_captureMillis.clear();
+	_capturing = false;
+
+	emit("DUMPFRAMES", Common::String::format(
+		"{\"name\":%s,\"count\":%d,\"line\":%d,\"frames\":%s,\"state\":%s}",
+		jsonString(cmd._text).c_str(), cmd._y, cmd._line, frames.c_str(), stateJson().c_str()));
 	return true;
 }
 
@@ -532,6 +602,9 @@ bool Playtest::step(Command &cmd) {
 	case OP_DUMP:
 		dump(cmd);
 		return true;
+
+	case OP_DUMPFRAMES:
+		return dumpFrames(cmd);
 
 	case OP_LOG:
 		emit("LOG", Common::String::format("{\"line\":%d,\"text\":%s,\"state\":%s}",
