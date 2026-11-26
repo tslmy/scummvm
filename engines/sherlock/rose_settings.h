@@ -51,7 +51,7 @@ Common::String roseTattooSpriteFilterSetting();
 // Resolved once per process.
 const char *roseTattooAssetPackDir();
 bool roseTattooPaletteSafeSprites();
-// Smooth movement between animation steps.
+// Smooth movement between animation steps (on unless turned off).
 bool roseTattooInterpolationSetting();
 // Cross-fade from one animation frame to the next.
 bool roseTattooCrossfadeSetting();

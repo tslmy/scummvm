@@ -99,7 +99,7 @@ bool roseTattooPaletteSafeSprites() {
 bool roseTattooInterpolationSetting() {
 	if (const char *env = envValue("SCUMMVM_SHERLOCK_TATTOO_INTERPOLATE"))
 		return !strcmp(env, "1");
-	return hasOption(ROSE_CONF_INTERPOLATE) && ConfMan.getBool(ROSE_CONF_INTERPOLATE);
+	return !hasOption(ROSE_CONF_INTERPOLATE) || ConfMan.getBool(ROSE_CONF_INTERPOLATE);
 }
 
 bool roseTattooCrossfadeSetting() {

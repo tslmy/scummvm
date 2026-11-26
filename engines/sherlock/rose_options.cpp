@@ -65,7 +65,7 @@ const ADExtraGuiOptionsMap ROSE_CHECKBOXES[] = {
 			_s("Smooth movement"),
 			_s("Move characters and objects smoothly between animation steps"),
 			ROSE_CONF_INTERPOLATE,
-			false,
+			true,
 			0,
 			0
 		}
@@ -130,6 +130,9 @@ void RoseTattooOptionsWidget::load() {
 	for (Common::HashMap<Common::String, GUI::CheckboxWidget *>::iterator it = _checkboxes.begin(); it != _checkboxes.end(); ++it) {
 		bool state = false;
 		for (const ADExtraGuiOptionsMap *entry = optionsList; entry->guioFlag; ++entry)
+			if (it->_key == entry->option.configOption)
+				state = entry->option.defaultState;
+		for (const ADExtraGuiOptionsMap *entry = ROSE_CHECKBOXES; entry->guioFlag; ++entry)
 			if (it->_key == entry->option.configOption)
 				state = entry->option.defaultState;
 		if (ConfMan.hasKey(it->_key, _domain))
