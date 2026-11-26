@@ -133,6 +133,16 @@ public:
 	void playSpeech(const Common::Path &name);
 
 	/**
+	 * Rose Tattoo: the speech library a talk sound file is read from
+	 */
+	Common::Path speechLibrary(const Common::Path &name) const;
+
+	/**
+	 * Rose Tattoo: true when the speech library for a talk sound file exists, so the line can be voiced
+	 */
+	bool hasSpeechLibrary(const Common::Path &name) const;
+
+	/**
 	 * Stop any currently playing speech
 	 */
 	void stopSpeech();

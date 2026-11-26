@@ -215,8 +215,9 @@ void TattooTalk::talkInterface(const byte *&str) {
 		++str;
 	}
 
-	// If speech is on, and text windows (subtitles) are off, then don't show the text window
-	if (!vm._textWindowsOn && sound._speechOn && _speaker != -1)
+	// If speech is on, and text windows (subtitles) are off, then don't show the text window,
+	// unless the scene has no speech library: the line would then be neither heard nor read (LMY-88)
+	if (!vm._textWindowsOn && sound._speechOn && _speaker != -1 && sound.hasSpeechLibrary(Common::Path(sound._talkSoundFile)))
 		return;
 
 	// Display the text window

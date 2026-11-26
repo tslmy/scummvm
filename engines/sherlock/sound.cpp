@@ -246,7 +246,6 @@ void Sound::setVolume(int volume) {
 
 void Sound::playSpeech(const Common::Path &name) {
 	Resources &res = *_vm->_res;
-	Scene &scene = *_vm->_scene;
 
 	// Stop any previously playing speech
 	stopSpeech();
@@ -257,15 +256,10 @@ void Sound::playSpeech(const Common::Path &name) {
 			_speechPlaying = true;
 	} else {
 		// Figure out which speech library to use
-		Common::Path libraryName(Common::String::format("speech%02d.lib", scene._currentScene));
-		Common::String baseName(name.baseName());
-		if ((!scumm_strnicmp(baseName.c_str(), "SLVE12S", 7)) || (!scumm_strnicmp(baseName.c_str(), "WATS12X", 7))
-				|| (!scumm_strnicmp(baseName.c_str(), "HOLM12X", 7)))
-			libraryName = "SPEECH12.LIB";
+		Common::Path libraryName = speechLibrary(name);
 
 		// If the speech library file doesn't even exist, then we can't play anything
-		Common::File f;
-		if (!f.exists(libraryName))
+		if (!hasSpeechLibrary(name))
 			return;
 
 		// Ensure the given library is in the cache
@@ -274,6 +268,19 @@ void Sound::playSpeech(const Common::Path &name) {
 		if (playSoundResource(name, libraryName, Audio::Mixer::kSpeechSoundType, _speechHandle))
 			_speechPlaying = true;
 	}
+}
+
+Common::Path Sound::speechLibrary(const Common::Path &name) const {
+	Common::Path libraryName(Common::String::format("speech%02d.lib", _vm->_scene->_currentScene));
+	Common::String baseName(name.baseName());
+	if ((!scumm_strnicmp(baseName.c_str(), "SLVE12S", 7)) || (!scumm_strnicmp(baseName.c_str(), "WATS12X", 7))
+			|| (!scumm_strnicmp(baseName.c_str(), "HOLM12X", 7)))
+		libraryName = "SPEECH12.LIB";
+	return libraryName;
+}
+
+bool Sound::hasSpeechLibrary(const Common::Path &name) const {
+	return Common::File::exists(speechLibrary(name));
 }
 
 void Sound::stopSpeech() {

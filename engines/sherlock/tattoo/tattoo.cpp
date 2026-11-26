@@ -241,6 +241,9 @@ void TattooEngine::doFoolscapPuzzle() {
 }
 
 void TattooEngine::loadConfig() {
+	// Text windows on unless the player turns them off: with ScummVM's default (off) and Voices On,
+	// a fresh profile showed no dialogue text at all (LMY-88)
+	ConfMan.registerDefault("subtitles", true);
 	SherlockEngine::loadConfig();
 
 	_transparentMenus = ConfMan.getBool("transparent_windows");
