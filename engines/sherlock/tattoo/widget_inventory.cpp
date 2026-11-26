@@ -458,6 +458,10 @@ void WidgetInventoryVerbs::handleEvents() {
 					// to handle tooltips and actually making the selection of what object to use them item on
 					inv.freeInv();
 					_owner->_surface.free();
+					// The window is gone from the native screen, so drop its
+					// hires item icons too; banishWindow() is not called here
+					// (LMY-102).
+					_vm->_screen->clearRoseTattooHiresSpriteLayer();
 				}
 			}
 		}
